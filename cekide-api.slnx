@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CekideApi.Application/CekideApi.Application.csproj" />
+    <Project Path="src/CekideApi.Domain/CekideApi.Domain.csproj" />
+    <Project Path="src/CekideApi.Infrastructure/CekideApi.Infrastructure.csproj" />
+    <Project Path="src/CekideApi/CekideApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CekideApi.IntegrationTests/CekideApi.IntegrationTests.csproj" />
+    <Project Path="tests/CekideApi.UnitTests/CekideApi.UnitTests.csproj" />
+  </Folder>
+</Solution>
