@@ -37,14 +37,7 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 30).Trim()
-          $address = $null
-          if (-not [System.Net.IPAddress]::TryParse($ip, [ref]$address) -or
-              $address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or
-              $ip -eq '0.0.0.0') { throw 'Expected a nonzero runner IPv4 address.' }
-          az sql server firewall-rule create --subscription $env:AZURE_SUBSCRIPTION_ID -g CEKIDE -s cekide -n "gha-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-staging" --start-ip-address $ip --end-ip-address $ip --only-show-errors -o none
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to allow the runner IP.' }
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Open -Environment staging -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
       - name: Validate staging SQL access and cross-environment denial
         run: dotnet run --project scripts/diagnostics/SqlConnectivity/SqlConnectivity.csproj --configuration Release -- staging
       - name: Remove this runner firewall rule
@@ -53,8 +46,7 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          az sql server firewall-rule delete --subscription $env:AZURE_SUBSCRIPTION_ID -g CEKIDE -s cekide -n "gha-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-staging" --only-show-errors -o none
-          if ($LASTEXITCODE -ne 0) { throw 'Runner firewall cleanup failed; remove the rule manually.' }
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Close -Environment staging -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
 
   production:
     needs: staging
@@ -82,14 +74,7 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 30).Trim()
-          $address = $null
-          if (-not [System.Net.IPAddress]::TryParse($ip, [ref]$address) -or
-              $address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or
-              $ip -eq '0.0.0.0') { throw 'Expected a nonzero runner IPv4 address.' }
-          az sql server firewall-rule create --subscription $env:AZURE_SUBSCRIPTION_ID -g CEKIDE -s cekide -n "gha-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-production" --start-ip-address $ip --end-ip-address $ip --only-show-errors -o none
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to allow the runner IP.' }
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Open -Environment production -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
       - name: Validate production SQL access and cross-environment denial
         run: dotnet run --project scripts/diagnostics/SqlConnectivity/SqlConnectivity.csproj --configuration Release -- production
       - name: Remove this runner firewall rule
@@ -98,5 +83,4 @@ jobs:
         env:
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          az sql server firewall-rule delete --subscription $env:AZURE_SUBSCRIPTION_ID -g CEKIDE -s cekide -n "gha-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-production" --only-show-errors -o none
-          if ($LASTEXITCODE -ne 0) { throw 'Runner firewall cleanup failed; remove the rule manually.' }
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Close -Environment production -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
