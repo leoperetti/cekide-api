@@ -61,9 +61,9 @@ async Task OpenAsync(SqlConnection connection)
             await connection.OpenAsync();
             return;
         }
-        catch (SqlException error) when (error.Number == 40613 && attempt < 6)
+        catch (SqlException error) when (error.Number is 40613 or 40615 && attempt < 6)
         {
-            Console.WriteLine($"Database resuming (40613); retry {attempt}/5 in 20 seconds.");
+            Console.WriteLine($"Database/firewall not ready ({error.Number}); retry {attempt}/5 in 20 seconds.");
             await Task.Delay(TimeSpan.FromSeconds(20));
         }
     }
