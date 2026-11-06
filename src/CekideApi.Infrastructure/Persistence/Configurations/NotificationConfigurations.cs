@@ -31,6 +31,13 @@ public sealed class StudentInvitationConfiguration : IEntityTypeConfiguration<St
         builder.Property(i => i.Email).HasMaxLength(StudentInvitation.MaxEmailLength).IsRequired();
         builder.Property(i => i.SentBy).HasMaxLength(StudentInvitation.MaxSentByLength).IsRequired();
         builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(10);
+        builder.Property(i => i.FirstName).HasMaxLength(Student.MaxNameLength);
+        builder.Property(i => i.LastName).HasMaxLength(Student.MaxNameLength);
+        builder.Property(i => i.FullName).HasMaxLength(Student.MaxNameLength);
+        builder.Property(i => i.PhoneNumber).HasMaxLength(Student.MaxPhoneLength);
+        builder.Property(i => i.Dni).HasMaxLength(Student.MaxDniLength);
+        builder.Property(i => i.RequiresRegistrationProfile).HasDefaultValue(false);
+        builder.Ignore(i => i.RegistrationProfile);
 
         builder.HasOne<Student>().WithMany().HasForeignKey(i => i.StudentId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(i => i.StudentId);

@@ -24,7 +24,7 @@ public sealed class StudentInvitationService(
     {
         var student = await RequireInvitableAsync(studentId, cancellationToken);
 
-        var created = await authcraft.CreateAsync(student.Email, accessToken, cancellationToken);
+        var created = await authcraft.CreateAsync(student.Email, RegistrationProfile(student), accessToken, cancellationToken);
         return await RecordAsync(student, created, actor, cancellationToken);
     }
 
@@ -40,7 +40,8 @@ public sealed class StudentInvitationService(
             throw new ConflictException("The student already accepted the invitation.");
         }
 
-        var created = await authcraft.ResendAsync(latest.ExternalInvitationId, accessToken, cancellationToken);
+        var created = await authcraft.ResendAsync(
+            latest.ExternalInvitationId, student.Email, RegistrationProfile(student), accessToken, cancellationToken);
         return await RecordAsync(student, created, actor, cancellationToken);
     }
 
@@ -72,9 +73,19 @@ public sealed class StudentInvitationService(
         }
 
         var invitation = StudentInvitation.Send(
-            student.Id, student.Email, created.InvitationId, created.ExpiresAt.UtcDateTime, actor, clock.UtcNow.UtcDateTime);
+            student.Id,
+            student.Email,
+            created.InvitationId,
+            created.ExpiresAt.UtcDateTime,
+            actor,
+            clock.UtcNow.UtcDateTime,
+            RegistrationProfile(student),
+            requiresRegistrationProfile: true);
         invitations.Add(invitation);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return StudentInvitationDto.From(invitation);
     }
+
+    private static StudentInvitationProfile RegistrationProfile(Student student) =>
+        new(student.Id, student.FirstName, student.LastName, student.FullName, student.Phone, student.Dni);
 }

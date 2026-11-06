@@ -10,6 +10,102 @@ public class StudentsTests : ApiTestBase
     private static int Id(JsonElement element) => element.GetProperty("id").GetInt32();
 
     [Fact]
+    public async Task Duplicate_email_does_not_report_a_dni_conflict_when_dni_is_available()
+    {
+        await CreateStudentAsync(email: "index_ix_students_dni@example.test");
+        var response = await Teacher.PostAsJsonAsync("/api/gym/students", new
+        {
+            full_name = "Otro Alumno", email = "index_ix_students_dni@example.test", dni = "01234567"
+        });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.False((await ReadAsync(response)).TryGetProperty("code", out _));
+    }
+
+    [Fact]
+    public async Task Structured_profile_is_normalized_and_duplicate_dni_is_a_conflict()
+    {
+        var response = await Teacher.PostAsJsonAsync("/api/gym/students", new
+        {
+            full_name = "Ana María de la Cruz",
+            first_name = " Ana María ",
+            last_name = " de la Cruz ",
+            email = "profile@example.test",
+            dni = "01.234.567"
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var profile = await ReadAsync(response);
+        Assert.Equal("Ana María", profile.GetProperty("first_name").GetString());
+        Assert.Equal("de la Cruz", profile.GetProperty("last_name").GetString());
+        Assert.Equal("01234567", profile.GetProperty("dni").GetString());
+
+        response = await Owner.PostAsJsonAsync("/api/gym/students", new
+        {
+            full_name = "Otro Alumno",
+            email = "other@example.test",
+            dni = "01234567"
+        });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("dni_already_exists", (await ReadAsync(response)).GetProperty("code").GetString());
+        var found = await ReadAsync(await Teacher.GetAsync("/api/gym/students?search=de%20la%20Cruz"));
+        Assert.Single(found.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Legacy_profile_updates_preserve_dni_and_invalidate_only_changed_names()
+    {
+        var response = await Teacher.PostAsJsonAsync("/api/gym/students", new
+        {
+            full_name = "Ana Pérez",
+            first_name = "Ana",
+            last_name = "Pérez",
+            email = "profile@example.test",
+            dni = "1234567"
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var id = Id(await ReadAsync(response));
+        response = await Teacher.PutAsJsonAsync($"/api/gym/students/{id}", new
+        {
+            full_name = "Ana Pérez",
+            email = "profile@example.test",
+            dni = (string?)null
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var profile = await ReadAsync(response);
+        Assert.Equal("Ana", profile.GetProperty("first_name").GetString());
+        Assert.Equal("1234567", profile.GetProperty("dni").GetString());
+        response = await Teacher.PutAsJsonAsync($"/api/gym/students/{id}", new
+        {
+            full_name = "Ana Gómez",
+            email = "profile@example.test"
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        profile = await ReadAsync(response);
+        Assert.Equal(JsonValueKind.Null, profile.GetProperty("first_name").ValueKind);
+        Assert.Equal(JsonValueKind.Null, profile.GetProperty("last_name").ValueKind);
+        Assert.Equal("1234567", profile.GetProperty("dni").GetString());
+    }
+
+    [Theory]
+    [InlineData("", "Ana", "Pérez", "Ana Pérez")]
+    [InlineData("12-345-678", "Ana", "Pérez", "Ana Pérez")]
+    [InlineData("12345678", "Ana", null, "Ana Pérez")]
+    [InlineData("12345678", "Ana", "Pérez", "Contradictorio")]
+    public async Task Invalid_profile_is_rejected_without_writes(
+        string dni, string firstName, string? lastName, string fullName)
+    {
+        var response = await Teacher.PostAsJsonAsync("/api/gym/students", new
+        {
+            full_name = fullName,
+            first_name = firstName,
+            last_name = lastName,
+            email = "invalid@example.test",
+            dni
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty((await ReadAsync(await Teacher.GetAsync("/api/gym/students"))).EnumerateArray());
+    }
+
+    [Fact]
     public async Task Teacher_creates_a_student_with_a_plan()
     {
         var plan = await CreatePlanAsync("Básico", 15000m);
@@ -27,6 +123,9 @@ public class StudentsTests : ApiTestBase
         var student = await ReadAsync(response);
         Assert.Equal("Ana Pérez", student.GetProperty("full_name").GetString());
         Assert.Equal("ana@example.com", student.GetProperty("email").GetString());
+        Assert.Equal(JsonValueKind.Null, student.GetProperty("first_name").ValueKind);
+        Assert.Equal(JsonValueKind.Null, student.GetProperty("last_name").ValueKind);
+        Assert.Equal(JsonValueKind.Null, student.GetProperty("dni").ValueKind);
         Assert.Equal(Id(plan), student.GetProperty("plan_id").GetInt32());
         Assert.Equal("Básico", student.GetProperty("plan_name").GetString());
         Assert.True(student.GetProperty("is_active").GetBoolean());

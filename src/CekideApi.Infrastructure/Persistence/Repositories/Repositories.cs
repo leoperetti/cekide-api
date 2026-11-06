@@ -28,6 +28,16 @@ public sealed class PlanRepository(CekideDbContext context) : IPlanRepository
     }
 
     public void Add(Plan plan) => context.Plans.Add(plan);
+
+    public async Task<IReadOnlyList<PlanAttendanceLimits>> GetAttendanceLimitsAsync(
+        IEnumerable<int> planIds, CancellationToken cancellationToken = default)
+    {
+        var ids = planIds.Distinct().ToList();
+        return ids.Count == 0 ? [] :
+            await context.PlanAttendanceLimits.Where(l => ids.Contains(l.PlanId)).ToListAsync(cancellationToken);
+    }
+
+    public void AddAttendanceLimits(PlanAttendanceLimits limits) => context.PlanAttendanceLimits.Add(limits);
 }
 
 public sealed class PassTariffRepository(CekideDbContext context) : IPassTariffRepository
@@ -60,6 +70,9 @@ public sealed class StudentRepository(CekideDbContext context) : IStudentReposit
     public Task<Student?> GetByIdentityIdAsync(string identityId, CancellationToken cancellationToken = default) =>
         context.Students.FirstOrDefaultAsync(s => s.IdentityId == identityId, cancellationToken);
 
+    public Task<Student?> GetByDniAsync(string normalizedDni, CancellationToken cancellationToken = default) =>
+        context.Students.FirstOrDefaultAsync(s => s.Dni == normalizedDni, cancellationToken);
+
     public async Task<IReadOnlyList<Student>> SearchAsync(string? search, bool? active, CancellationToken cancellationToken = default)
     {
         var query = context.Students.AsQueryable();
@@ -80,6 +93,9 @@ public sealed class StudentRepository(CekideDbContext context) : IStudentReposit
 
     public Task<bool> EmailExistsAsync(string normalizedEmail, int? exceptStudentId, CancellationToken cancellationToken = default) =>
         context.Students.AnyAsync(s => s.Email == normalizedEmail && s.Id != exceptStudentId, cancellationToken);
+
+    public Task<bool> DniExistsAsync(string normalizedDni, int? exceptStudentId, CancellationToken cancellationToken = default) =>
+        context.Students.AnyAsync(s => s.Dni == normalizedDni && s.Id != exceptStudentId, cancellationToken);
 
     public void Add(Student student) => context.Students.Add(student);
 }

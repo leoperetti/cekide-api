@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -11,7 +12,10 @@ public static class AuthenticationExtensions
     /// <summary>Validates JWTs issued by authcraft-api (same Jwt:Key / Issuer / Audience, role claim = ClaimTypes.Role).</summary>
     public static IServiceCollection AddCekideAuthentication(this IServiceCollection services)
     {
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer()
+            .AddScheme<AuthenticationSchemeOptions, KioskAuthenticationHandler>(
+                KioskAuthenticationHandler.SchemeName, _ => { });
 
         // Configuration is read lazily so values added after Program.cs starts (Key Vault, tests) are honoured.
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)

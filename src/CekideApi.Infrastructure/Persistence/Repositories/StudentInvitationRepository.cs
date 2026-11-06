@@ -9,6 +9,13 @@ public sealed class StudentInvitationRepository(CekideDbContext context) : IStud
     public async Task<IReadOnlyList<StudentInvitation>> ListForStudentAsync(int studentId, CancellationToken cancellationToken = default) =>
         await context.StudentInvitations.Where(i => i.StudentId == studentId).OrderBy(i => i.Id).ToListAsync(cancellationToken);
 
+    public Task<StudentInvitation?> GetLatestByEmailAsync(string normalizedEmail, CancellationToken cancellationToken = default) =>
+        context.StudentInvitations
+            .Where(i => i.Email == normalizedEmail)
+            .OrderByDescending(i => i.SentAt)
+            .ThenByDescending(i => i.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task<IReadOnlyDictionary<int, InvitationStatus>> LatestStatusesAsync(
         IEnumerable<int> studentIds, CancellationToken cancellationToken = default)
     {

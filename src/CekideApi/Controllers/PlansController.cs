@@ -18,14 +18,14 @@ public class PlansController(PlanService plans) : ControllerBase
     [Authorize(Policy = Policies.OwnerOnly)]
     public async Task<ActionResult<PlanDto>> Create(CreatePlanRequest request, CancellationToken cancellationToken)
     {
-        var plan = await plans.CreateAsync(request, cancellationToken);
+        var plan = await plans.CreateAsync(request, User.GetSubject(), cancellationToken);
         return Created($"/api/gym/plans/{plan.Id}", plan);
     }
 
     [HttpPut("plans/{planId:int}")]
     [Authorize(Policy = Policies.OwnerOnly)]
     public async Task<ActionResult<PlanDto>> Update(int planId, UpdatePlanRequest request, CancellationToken cancellationToken) =>
-        Ok(await plans.UpdateAsync(planId, request, cancellationToken));
+        Ok(await plans.UpdateAsync(planId, request, User.GetSubject(), cancellationToken));
 
     [HttpGet("pass-tariffs")]
     [Authorize(Policy = Policies.StaffOnly)]

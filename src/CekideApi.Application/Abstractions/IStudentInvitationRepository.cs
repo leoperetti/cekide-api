@@ -7,6 +7,9 @@ public interface IStudentInvitationRepository
     /// <summary>Every invitation of the student, oldest first.</summary>
     Task<IReadOnlyList<StudentInvitation>> ListForStudentAsync(int studentId, CancellationToken cancellationToken = default);
 
+    /// <summary>Latest invitation to the normalized email, newest first.</summary>
+    Task<StudentInvitation?> GetLatestByEmailAsync(string normalizedEmail, CancellationToken cancellationToken = default);
+
     /// <summary>Status of the latest invitation of each student that has one.</summary>
     Task<IReadOnlyDictionary<int, InvitationStatus>> LatestStatusesAsync(IEnumerable<int> studentIds, CancellationToken cancellationToken = default);
 
@@ -23,4 +26,13 @@ public interface IAuthcraftInvitationClient
     Task<CreatedInvitation> CreateAsync(string email, string accessToken, CancellationToken cancellationToken = default);
 
     Task<CreatedInvitation> ResendAsync(long invitationId, string accessToken, CancellationToken cancellationToken = default);
+
+    Task<CreatedInvitation> CreateAsync(
+        string email, StudentInvitationProfile profile, string accessToken, CancellationToken cancellationToken = default);
+
+    Task<CreatedInvitation> ResendAsync(
+        long invitationId, string email, StudentInvitationProfile profile, string accessToken, CancellationToken cancellationToken = default);
+
+    Task<AcceptedStudentProfile?> GetAcceptedProfileAsync(
+        long invitationId, string accessToken, CancellationToken cancellationToken = default);
 }

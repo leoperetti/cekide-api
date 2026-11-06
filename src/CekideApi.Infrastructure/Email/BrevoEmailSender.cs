@@ -6,8 +6,6 @@ namespace CekideApi.Infrastructure.Email;
 /// <summary>Sends transactional email through the Brevo REST API (POST /smtp/email).</summary>
 public sealed class BrevoEmailSender(HttpClient http, BrevoOptions options) : IEmailSender
 {
-    private const int MaxErrorLength = 500;
-
     public async Task<EmailSendResult> SendAsync(EmailMessage message, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(options.ApiKey) || string.IsNullOrWhiteSpace(options.FromEmail))
@@ -37,14 +35,16 @@ public sealed class BrevoEmailSender(HttpClient http, BrevoOptions options) : IE
                 return EmailSendResult.Ok();
             }
 
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
-            return EmailSendResult.Fail(Truncate($"Brevo responded {(int)response.StatusCode}: {body}"));
+            if ((int)response.StatusCode >= 500)
+            {
+                return EmailSendResult.Uncertain($"Brevo returned HTTP {(int)response.StatusCode}; delivery is unknown.");
+            }
+
+            return EmailSendResult.Fail($"Brevo rejected the email with HTTP {(int)response.StatusCode}.");
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return EmailSendResult.Fail(Truncate($"Brevo request failed: {exception.Message}"));
+            return EmailSendResult.Uncertain("The Brevo response was not received; delivery is unknown.");
         }
     }
-
-    private static string Truncate(string value) => value.Length <= MaxErrorLength ? value : value[..MaxErrorLength];
 }

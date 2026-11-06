@@ -1,11 +1,120 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text;
 using CekideApi.IntegrationTests.Infrastructure;
 
 namespace CekideApi.IntegrationTests;
 
 public class PlansTests : ApiTestBase
 {
+    [Fact]
+    public async Task Limits_are_initially_effective_and_revisions_wait_until_next_month()
+    {
+        Factory.Clock.SetBuenosAiresDate(2026, 11, 4);
+        var response = await Owner.PostAsJsonAsync("/api/gym/plans", new
+        {
+            name = "Limits",
+            monthly_price = 100m,
+            weekly_days = 3,
+            monthly_days = 12
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var plan = await ReadAsync(response);
+        var id = plan.GetProperty("id").GetInt32();
+        Assert.Equal(3, plan.GetProperty("weekly_days").GetInt32());
+        Assert.Equal(12, plan.GetProperty("monthly_days").GetInt32());
+        Assert.Equal("2026-11-04", plan.GetProperty("attendance_limits_effective_from").GetString());
+        Assert.Equal(JsonValueKind.Null, plan.GetProperty("pending_attendance_limits").ValueKind);
+
+        response = await Owner.PutAsJsonAsync($"/api/gym/plans/{id}", new
+        {
+            name = "Limits",
+            monthly_price = 100m,
+            weekly_days = 4,
+            monthly_days = 16
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        plan = await ReadAsync(response);
+        Assert.Equal(3, plan.GetProperty("weekly_days").GetInt32());
+        Assert.Equal(4, plan.GetProperty("pending_attendance_limits").GetProperty("weekly_days").GetInt32());
+        Assert.Equal("2026-12-01", plan.GetProperty("pending_attendance_limits").GetProperty("effective_from").GetString());
+
+        response = await Owner.PutAsJsonAsync($"/api/gym/plans/{id}", new
+        {
+            name = "Limits",
+            monthly_price = 110m,
+            weekly_days = 7,
+            monthly_days = 2
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        response = await Owner.PutAsJsonAsync($"/api/gym/plans/{id}", new { name = "Legacy edit", monthly_price = 120m });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(7, (await ReadAsync(response)).GetProperty("pending_attendance_limits").GetProperty("weekly_days").GetInt32());
+
+        Factory.Clock.SetBuenosAiresDate(2026, 12, 1);
+        plan = (await ReadAsync(await Teacher.GetAsync("/api/gym/plans"))).EnumerateArray().Single();
+        Assert.Equal(7, plan.GetProperty("weekly_days").GetInt32());
+        Assert.Equal(2, plan.GetProperty("monthly_days").GetInt32());
+        Assert.Equal(JsonValueKind.Null, plan.GetProperty("pending_attendance_limits").ValueKind);
+    }
+
+    [Fact]
+    public async Task Legacy_limits_are_pending_and_teacher_cannot_configure_them()
+    {
+        Factory.Clock.SetBuenosAiresDate(2026, 11, 4);
+        var plan = await CreatePlanAsync();
+        var id = plan.GetProperty("id").GetInt32();
+        Assert.Equal(JsonValueKind.Null, plan.GetProperty("weekly_days").ValueKind);
+        Assert.Equal(JsonValueKind.Null, plan.GetProperty("monthly_days").ValueKind);
+        var response = await Teacher.PutAsJsonAsync($"/api/gym/plans/{id}", new
+        {
+            name = "Limits",
+            monthly_price = 100m,
+            weekly_days = 3,
+            monthly_days = 12
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var after = (await ReadAsync(await Owner.GetAsync("/api/gym/plans"))).EnumerateArray().Single();
+        Assert.Equal(JsonValueKind.Null, after.GetProperty("weekly_days").ValueKind);
+        response = await Owner.PutAsJsonAsync($"/api/gym/plans/{id}", new
+        {
+            name = "Limits",
+            monthly_price = 100m,
+            weekly_days = 3,
+            monthly_days = 12
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        after = await ReadAsync(response);
+        Assert.Equal(3, after.GetProperty("weekly_days").GetInt32());
+        Assert.Equal("2026-11-04", after.GetProperty("attendance_limits_effective_from").GetString());
+    }
+
+    [Theory]
+    [InlineData("\"weekly_days\":3")]
+    [InlineData("\"monthly_days\":12")]
+    [InlineData("\"weekly_days\":null,\"monthly_days\":null")]
+    [InlineData("\"weekly_days\":3,\"monthly_days\":null")]
+    [InlineData("\"weekly_days\":0,\"monthly_days\":12")]
+    [InlineData("\"weekly_days\":8,\"monthly_days\":12")]
+    [InlineData("\"weekly_days\":3,\"monthly_days\":0")]
+    [InlineData("\"weekly_days\":3.5,\"monthly_days\":12")]
+    public async Task Invalid_or_incomplete_limits_do_not_change_a_plan(string fields)
+    {
+        var plan = await CreatePlanAsync();
+        var id = plan.GetProperty("id").GetInt32();
+        using var body = new StringContent("{\"name\":\"Changed\",\"monthly_price\":1," + fields + "}", Encoding.UTF8, "application/json");
+        var response = await Owner.PutAsync($"/api/gym/plans/{id}", body);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var after = (await ReadAsync(await Owner.GetAsync("/api/gym/plans"))).EnumerateArray().Single();
+        Assert.Equal(plan.GetProperty("name").GetString(), after.GetProperty("name").GetString());
+        Assert.Equal(plan.GetProperty("monthly_price").GetDecimal(), after.GetProperty("monthly_price").GetDecimal());
+        using var createBody = new StringContent("{\"name\":\"Changed\",\"monthly_price\":1," + fields + "}", Encoding.UTF8, "application/json");
+        response = await Owner.PostAsync("/api/gym/plans", createBody);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Single((await ReadAsync(await Owner.GetAsync("/api/gym/plans"))).EnumerateArray());
+    }
+
     [Fact]
     public async Task Owner_creates_a_plan()
     {

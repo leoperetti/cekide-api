@@ -1,4 +1,5 @@
 using CekideApi.Application.Abstractions;
+using CekideApi.Application.Notifications;
 using CekideApi.Domain;
 
 namespace CekideApi.UnitTests.Support;
@@ -51,11 +52,17 @@ public sealed class InMemoryStudentRepository : IStudentRepository
     public Task<Student?> GetByIdentityIdAsync(string identityId, CancellationToken cancellationToken = default) =>
         Task.FromResult(Items.FirstOrDefault(s => s.IdentityId == identityId));
 
+    public Task<Student?> GetByDniAsync(string normalizedDni, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Items.FirstOrDefault(s => s.Dni == normalizedDni));
+
     public Task<IReadOnlyList<Student>> SearchAsync(string? search, bool? active, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<Student>>(Items.Where(s => active is null || s.IsActive == active).ToList());
 
     public Task<bool> EmailExistsAsync(string normalizedEmail, int? exceptStudentId, CancellationToken cancellationToken = default) =>
         Task.FromResult(Items.Any(s => s.Email == normalizedEmail && s.Id != exceptStudentId));
+
+    public Task<bool> DniExistsAsync(string normalizedDni, int? exceptStudentId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Items.Any(s => s.Dni == normalizedDni && s.Id != exceptStudentId));
 
     public void Add(Student student)
     {
@@ -80,6 +87,14 @@ public sealed class InMemoryStudentRepository : IStudentRepository
 public sealed class InMemoryPlanRepository : IPlanRepository
 {
     public List<Plan> Items { get; } = [];
+
+    public List<PlanAttendanceLimits> AttendanceLimits { get; } = [];
+
+    public Task<IReadOnlyList<PlanAttendanceLimits>> GetAttendanceLimitsAsync(
+        IEnumerable<int> planIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<PlanAttendanceLimits>>(AttendanceLimits.Where(l => planIds.Contains(l.PlanId)).ToList());
+
+    public void AddAttendanceLimits(PlanAttendanceLimits limits) => AttendanceLimits.Add(limits);
 
     public Task<Plan?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
         Task.FromResult(Items.FirstOrDefault(p => p.Id == id));
@@ -186,6 +201,152 @@ public sealed class InMemoryOverdueNotificationRepository : IOverdueNotification
     public void Discard(OverdueNotification notification) => Items.Remove(notification);
 }
 
+public sealed class InMemoryAttendanceQuotaNotificationRepository : IAttendanceQuotaNotificationRepository
+{
+    private int _nextId = 1;
+
+    public List<AttendanceQuotaNotification> Items { get; } = [];
+
+    public Task<AttendanceQuotaNotification?> GetByIdAsync(
+        int id,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(Items.FirstOrDefault(notification => notification.Id == id));
+
+    public Task<IReadOnlyList<AttendanceQuotaNotification>> ListAsync(
+        string? period,
+        AttendanceQuotaNotificationStatus? status,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<AttendanceQuotaNotification>>(
+            Items.Where(notification =>
+                    (period is null || notification.Period == period) &&
+                    (status is null || notification.Status == status))
+                .OrderByDescending(notification => notification.Period, StringComparer.Ordinal)
+                .ThenByDescending(notification => notification.Id)
+                .ToArray());
+
+    public Task<IReadOnlyList<int>> ListRunnableIdsAsync(
+        DateTimeOffset now,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<int>>(Items
+            .Where(notification =>
+                notification.Status == AttendanceQuotaNotificationStatus.Pending ||
+                notification.Status == AttendanceQuotaNotificationStatus.Failed &&
+                notification.Attempts <= AttendanceQuotaNotificationPolicy.MaximumAutomaticRetries &&
+                notification.NextAttemptAt <= now.UtcDateTime)
+            .OrderBy(notification => notification.CreatedAt)
+            .ThenBy(notification => notification.Id)
+            .Take(limit)
+            .Select(notification => notification.Id)
+            .ToArray());
+
+    public Task<int> MarkExpiredClaimsAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        var expired = Items
+            .Where(notification =>
+                notification.Status == AttendanceQuotaNotificationStatus.Sending &&
+                notification.ClaimedUntil <= now.UtcDateTime)
+            .ToArray();
+        foreach (var notification in expired)
+        {
+            notification.ExpireClaim(now);
+        }
+
+        return Task.FromResult(expired.Length);
+    }
+
+    public Task<bool> TryClaimAsync(
+        int id,
+        string claimId,
+        DateTimeOffset claimedAt,
+        TimeSpan lease,
+        CancellationToken cancellationToken = default)
+    {
+        var notification = Items.FirstOrDefault(item => item.Id == id);
+        return Task.FromResult(notification is not null &&
+                               (notification.Status != AttendanceQuotaNotificationStatus.Failed ||
+                                notification.Attempts <= AttendanceQuotaNotificationPolicy.MaximumAutomaticRetries) &&
+                               notification.TryClaim(claimId, claimedAt, lease));
+    }
+
+    public Task<bool> MarkSentAsync(
+        int id,
+        string claimId,
+        DateTimeOffset sentAt,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(WithClaim(id, claimId, notification => notification.MarkSent(claimId, sentAt)));
+
+    public Task<bool> MarkFailedAsync(
+        int id,
+        string claimId,
+        string error,
+        DateTimeOffset? retryAt,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(WithClaim(
+            id,
+            claimId,
+            notification => notification.MarkFailed(claimId, error, retryAt)));
+
+    public Task<bool> MarkDeliveryUnknownAsync(
+        int id,
+        string claimId,
+        string error,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(WithClaim(id, claimId, notification => notification.MarkDeliveryUnknown(claimId, error)));
+
+    public Task<bool> QueueManualRetryAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var notification = Items.FirstOrDefault(item => item.Id == id);
+        if (notification?.Status != AttendanceQuotaNotificationStatus.Failed)
+        {
+            return Task.FromResult(false);
+        }
+
+        notification.QueueManualRetry();
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> ResolveDeliveryAsync(
+        int id,
+        bool delivered,
+        string resolvedBy,
+        string evidence,
+        DateTimeOffset resolvedAt,
+        CancellationToken cancellationToken = default)
+    {
+        var notification = Items.FirstOrDefault(item =>
+            item.Id == id && item.Status == AttendanceQuotaNotificationStatus.DeliveryUnknown);
+        if (notification is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        notification.ResolveDelivery(resolvedBy, delivered, evidence, resolvedAt);
+        return Task.FromResult(true);
+    }
+
+    public void Add(AttendanceQuotaNotification notification)
+    {
+        EntityIds.Assign(notification, _nextId++);
+        notification.CreatedAt = DateTime.UtcNow;
+        notification.UpdatedAt = notification.CreatedAt;
+        Items.Add(notification);
+    }
+
+    private bool WithClaim(int id, string claimId, Action<AttendanceQuotaNotification> update)
+    {
+        var notification = Items.FirstOrDefault(item => item.Id == id);
+        if (notification?.Status != AttendanceQuotaNotificationStatus.Sending ||
+            !string.Equals(notification.ClaimId, claimId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        update(notification);
+        return true;
+    }
+}
+
 public sealed class InMemoryStudentInvitationRepository : IStudentInvitationRepository
 {
     private int _nextId = 1;
@@ -194,6 +355,13 @@ public sealed class InMemoryStudentInvitationRepository : IStudentInvitationRepo
 
     public Task<IReadOnlyList<StudentInvitation>> ListForStudentAsync(int studentId, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<StudentInvitation>>(Items.Where(i => i.StudentId == studentId).OrderBy(i => i.Id).ToList());
+
+    public Task<StudentInvitation?> GetLatestByEmailAsync(string normalizedEmail, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Items
+            .Where(i => i.Email == normalizedEmail)
+            .OrderByDescending(i => i.SentAt)
+            .ThenByDescending(i => i.Id)
+            .FirstOrDefault());
 
     public void Add(StudentInvitation invitation)
     {
@@ -215,6 +383,8 @@ public sealed class FakeEmailSender : IEmailSender
 
     public int Attempts { get; private set; }
 
+    public EmailSendResult? Result { get; set; }
+
     /// <summary>When set, every send fails with this error.</summary>
     public string? FailWith { get; set; }
 
@@ -229,6 +399,11 @@ public sealed class FakeEmailSender : IEmailSender
             throw ThrowWith;
         }
 
+        if (Result is not null)
+        {
+            return Task.FromResult(Result);
+        }
+
         if (FailWith is not null)
         {
             return Task.FromResult(EmailSendResult.Fail(FailWith));
@@ -236,5 +411,52 @@ public sealed class FakeEmailSender : IEmailSender
 
         Sent.Add(message);
         return Task.FromResult(EmailSendResult.Ok());
+    }
+}
+
+public sealed class NoopAttendanceRepository : IAttendanceRepository
+{
+    public Task<Attendance?> GetForStudentDateAsync(
+        int studentId,
+        DateOnly localDate,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<Attendance?>(null);
+
+    public Task<AttendancePeriod?> GetPeriodAsync(
+        int studentId,
+        string period,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<AttendancePeriod?>(null);
+
+    public Task<IReadOnlyList<DateOnly>> GetAttendanceDatesAsync(
+        int studentId,
+        DateOnly fromInclusive,
+        DateOnly toExclusive,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<DateOnly>>([]);
+
+    public Task<IReadOnlyList<Attendance>> GetAttendancesAsync(
+        int studentId,
+        DateOnly fromInclusive,
+        DateOnly toExclusive,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Attendance>>([]);
+
+    public Task<AttendanceQuotaNotification?> GetQuotaNotificationAsync(
+        int studentId,
+        string period,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<AttendanceQuotaNotification?>(null);
+
+    public void AddPeriod(AttendancePeriod period)
+    {
+    }
+
+    public void AddAttendance(Attendance attendance)
+    {
+    }
+
+    public void AddQuotaNotification(AttendanceQuotaNotification notification)
+    {
     }
 }

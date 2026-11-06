@@ -45,6 +45,8 @@ public class StudentInvitationsTests : ApiTestBase
         Assert.Equal("create", call.Operation);
         Assert.Equal("ana@example.com", call.Email);
         Assert.Equal(TokenOf(Teacher), call.AccessToken);
+        Assert.Equal(studentId, call.StudentProfile!.StudentId);
+        Assert.Equal("Ana Pérez", call.StudentProfile.FullName);
 
         var stored = Assert.Single(await StoredAsync());
         Assert.Equal(studentId, stored.StudentId);
@@ -53,6 +55,9 @@ public class StudentInvitationsTests : ApiTestBase
         Assert.Equal(100, stored.ExternalInvitationId);
         Assert.Equal("teacher-1", stored.SentBy);
         Assert.Equal(Factory.Clock.UtcNow.UtcDateTime, stored.SentAt);
+        Assert.True(stored.RequiresRegistrationProfile);
+        Assert.Equal("Ana Pérez", stored.FullName);
+        Assert.Null(stored.ProfileSyncedAt);
     }
 
     [Fact]
@@ -135,6 +140,12 @@ public class StudentInvitationsTests : ApiTestBase
     {
         var studentId = await StudentAsync();
         await InviteAsync(studentId);
+        await Factory.WithDbAsync(async db =>
+        {
+            var student = await db.Students.SingleAsync();
+            student.Update("Ana María de la Cruz", "ana.new@example.com", "+541166660000", "01234567", "Ana María", "de la Cruz");
+            return await db.SaveChangesAsync();
+        });
 
         var response = await ResendAsync(studentId, Owner);
 
@@ -147,6 +158,10 @@ public class StudentInvitationsTests : ApiTestBase
         Assert.Equal("resend", resend.Operation);
         Assert.Equal(100, resend.InvitationId);
         Assert.Equal(TokenOf(Owner), resend.AccessToken);
+        Assert.Equal("ana.new@example.com", resend.Email);
+        Assert.Equal("Ana María", resend.StudentProfile!.FirstName);
+        Assert.Equal("de la Cruz", resend.StudentProfile.LastName);
+        Assert.Equal("01234567", resend.StudentProfile.Dni);
 
         var stored = await StoredAsync();
         Assert.Equal(2, stored.Count);
@@ -154,6 +169,9 @@ public class StudentInvitationsTests : ApiTestBase
         Assert.Equal(InvitationStatus.Sent, stored[1].Status);
         Assert.Equal(101, stored[1].ExternalInvitationId);
         Assert.Equal(Id(body), stored[1].Id);
+        Assert.Equal("ana.new@example.com", stored[1].Email);
+        Assert.True(stored[1].RequiresRegistrationProfile);
+        Assert.Equal("01234567", stored[1].Dni);
     }
 
     [Fact]
@@ -255,6 +273,13 @@ public class StudentInvitationsTests : ApiTestBase
     {
         var studentId = await StudentAsync("student-1@example.com");
         await InviteAsync(studentId);
+        Factory.Authcraft.AcceptedProfile = new AcceptedStudentProfile(
+            100,
+            studentId,
+            "student-1",
+            Factory.Clock.UtcNow,
+            new StudentProfileSnapshot(null, null, "Ana Pérez", "1155550000", null),
+            new StudentRegisteredProfile("Ana", "Pérez", "1155550000", "01234567"));
 
         Assert.Equal(HttpStatusCode.OK, (await Student.GetAsync("/api/gym/me/payments")).StatusCode);
 

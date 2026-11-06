@@ -34,7 +34,15 @@ coverage.*
 # OS files
 .DS_Store
 Thumbs.db
+*.tmp
+*.swp
 
 # DotNet local tools and secrets
 .dotnet/
 **/secrets.json
+.env*
+!.env.example
+!.env.sample
+
+# Local development identity credentials must remain outside the repository
+**/blob-development*.pem

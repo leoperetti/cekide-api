@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/scripts/" />
+  <Folder Name="/scripts/diagnostics/">
+    <Project Path="scripts/diagnostics/BlobIsolation/BlobIsolation.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/CekideApi.Application/CekideApi.Application.csproj" />
     <Project Path="src/CekideApi.Domain/CekideApi.Domain.csproj" />

@@ -22,8 +22,16 @@ public sealed class CekideApiFactory : WebApplicationFactory<Program>
     public const string TenantOrigin = "https://cekide-gym.example.com";
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+    private readonly string? _sqlServerConnectionString;
 
-    public CekideApiFactory() => _connection.Open();
+    public CekideApiFactory(string? sqlServerConnectionString = null)
+    {
+        _sqlServerConnectionString = sqlServerConnectionString;
+        if (_sqlServerConnectionString is null)
+        {
+            _connection.Open();
+        }
+    }
 
     public FakeClock Clock { get; } = new();
 
@@ -38,6 +46,12 @@ public sealed class CekideApiFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         return await scope.ServiceProvider.GetRequiredService<OverdueNotificationService>().ProcessAsync();
+    }
+
+    public async Task<AttendanceQuotaDispatchResult> RunAttendanceQuotaNotificationsAsync()
+    {
+        using var scope = Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<AttendanceQuotaNotificationService>().ProcessDueAsync();
     }
 
     /// <summary>Runs code against the test database (read or arrange state the API cannot produce).</summary>
@@ -69,7 +83,17 @@ public sealed class CekideApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<DbContextOptions<CekideDbContext>>();
             services.RemoveAll<IDbContextOptionsConfiguration<CekideDbContext>>();
-            services.AddDbContext<CekideDbContext>(options => options.UseSqlite(_connection));
+            services.AddDbContext<CekideDbContext>(options =>
+            {
+                if (_sqlServerConnectionString is null)
+                {
+                    options.UseSqlite(_connection);
+                }
+                else
+                {
+                    options.UseSqlServer(_sqlServerConnectionString);
+                }
+            });
 
             services.RemoveAll<IClock>();
             services.AddSingleton<IClock>(Clock);
@@ -84,7 +108,12 @@ public sealed class CekideApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAuthcraftInvitationClient>(Authcraft);
 
             // Tests drive the overdue run explicitly instead of waiting for the hourly job.
-            foreach (var job in services.Where(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(OverdueNotificationJob)).ToList())
+            foreach (var job in services.Where(d =>
+                         d.ServiceType == typeof(IHostedService) &&
+                         d.ImplementationType is { } implementationType &&
+                         (implementationType == typeof(OverdueNotificationJob) ||
+                          implementationType == typeof(AttendanceQuotaNotificationJob) ||
+                          implementationType == typeof(RecoveryAccrualJob))).ToList())
             {
                 services.Remove(job);
             }

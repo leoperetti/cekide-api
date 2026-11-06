@@ -1,5 +1,6 @@
 using CekideApi.Application.Students;
 using CekideApi.Domain;
+using CekideApi.Application.Abstractions;
 using CekideApi.UnitTests.Support;
 
 namespace CekideApi.UnitTests;
@@ -11,8 +12,9 @@ public class StudentLinkingServiceTests
     private readonly InMemoryStudentRepository _students = new();
     private readonly InMemoryStudentInvitationRepository _invitations = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly TestClock _clock = new();
 
-    private StudentLinkingService CreateService() => new(_students, _invitations, _unitOfWork);
+    private StudentLinkingService CreateService() => new(_students, _invitations, new UnusedAuthcraftClient(), _unitOfWork, _clock);
 
     private Student Seed(string email = "ana@example.com", bool active = true) =>
         _students.Seed("Ana Pérez", email, planId: null, new DateOnly(2026, 10, 1), active);
@@ -128,6 +130,185 @@ public class StudentLinkingServiceTests
 
         Assert.Equal(LinkOutcome.NotFound, result.Outcome);
         Assert.Null(student.IdentityId);
+    }
+
+    private sealed class UnusedAuthcraftClient : IAuthcraftInvitationClient
+    {
+        public Task<CreatedInvitation> CreateAsync(string email, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CreatedInvitation> ResendAsync(long invitationId, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CreatedInvitation> CreateAsync(
+            string email, StudentInvitationProfile profile, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CreatedInvitation> ResendAsync(
+            long invitationId, string email, StudentInvitationProfile profile, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<AcceptedStudentProfile?> GetAcceptedProfileAsync(
+            long invitationId, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+}
+
+public class StudentRegistrationProfileSyncTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 11, 5, 15, 0, 0, TimeSpan.Zero);
+    private readonly InMemoryStudentRepository _students = new();
+    private readonly InMemoryStudentInvitationRepository _invitations = new();
+    private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly TestClock _clock = new();
+    private readonly StubAuthcraftInvitationClient _authcraft = new();
+    private StudentLinkingService CreateService() =>
+        new(_students, _invitations, _authcraft, _unitOfWork, _clock);
+
+    [Fact]
+    public async Task Syncs_the_accepted_profile_and_forwards_the_callers_token()
+    {
+        var (student, invitation) = SeedProfileInvitation();
+        _authcraft.AcceptedProfile = Accepted(invitation, student, registeredDni: "01234567");
+
+        var result = await CreateService().TryLinkAsync("identity-1", student.Email, "access-token");
+
+        Assert.Equal(LinkOutcome.Linked, result.Outcome);
+        Assert.Equal("identity-1", student.IdentityId);
+        Assert.Equal("01234567", student.Dni);
+        Assert.Equal("Ana", student.FirstName);
+        Assert.Equal("Pérez", student.LastName);
+        Assert.Equal("access-token", _authcraft.AccessToken);
+        Assert.Equal(invitation.ExternalInvitationId, _authcraft.RequestedInvitationId);
+        Assert.Equal(Now.UtcDateTime, invitation.ProfileSyncedAt);
+        Assert.Equal(InvitationStatus.Accepted, invitation.Status);
+        Assert.Equal(1, _unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task A_missing_accepted_profile_does_not_fall_back_to_email_linking()
+    {
+        var (student, _) = SeedProfileInvitation();
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            CreateService().TryLinkAsync("identity-1", student.Email, "access-token"));
+
+        Assert.Null(student.IdentityId);
+        Assert.Null(student.Dni);
+        Assert.Equal(0, _unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task Staff_corrected_name_and_phone_are_not_overwritten()
+    {
+        var student = _students.Seed("Nombre corregido", "ana@example.com", null, new DateOnly(2026, 10, 1));
+        student.Update("Nombre corregido", student.Email, "+541199999999");
+        var invitation = SeedProfileInvitation(student);
+        _authcraft.AcceptedProfile = Accepted(invitation, student, registeredFirstName: "Ana María", registeredLastName: "de la Cruz");
+
+        var result = await CreateService().TryLinkAsync("identity-1", student.Email, "access-token");
+
+        Assert.Equal(LinkOutcome.Linked, result.Outcome);
+        Assert.Equal("Nombre corregido", student.FullName);
+        Assert.Equal("+541199999999", student.Phone);
+        Assert.Equal("01234567", student.Dni);
+    }
+
+    [Fact]
+    public async Task A_conflicting_or_duplicate_DNI_fails_without_linking()
+    {
+        var (student, invitation) = SeedProfileInvitation();
+        student.Update(student.FullName, student.Email, null, "76543210");
+        _authcraft.AcceptedProfile = Accepted(invitation, student, registeredDni: "01234567");
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            CreateService().TryLinkAsync("identity-1", student.Email, "access-token"));
+
+        Assert.Null(student.IdentityId);
+        Assert.Equal(0, _unitOfWork.Saves);
+
+        var (second, secondInvitation) = SeedProfileInvitation("otra@example.com");
+        var duplicate = _students.Seed("Otra Persona", "otro@example.com", null, new DateOnly(2026, 10, 1));
+        duplicate.Update(duplicate.FullName, duplicate.Email, null, "01234567");
+        _authcraft.AcceptedProfile = Accepted(secondInvitation, second, registeredDni: "01234567");
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            CreateService().TryLinkAsync("identity-2", second.Email, "access-token"));
+
+        Assert.Null(second.IdentityId);
+        Assert.Equal(0, _unitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task A_profile_from_another_identity_is_rejected_without_fallback()
+    {
+        var (student, invitation) = SeedProfileInvitation();
+        _authcraft.AcceptedProfile = Accepted(invitation, student, identityId: "identity-other");
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            CreateService().TryLinkAsync("identity-1", student.Email, "access-token"));
+
+        Assert.Null(student.IdentityId);
+        Assert.Equal(0, _unitOfWork.Saves);
+    }
+
+    private (Student Student, StudentInvitation Invitation) SeedProfileInvitation(string email = "ana@example.com")
+    {
+        var student = _students.Seed("Ana Pérez", email, null, new DateOnly(2026, 10, 1));
+        return (student, SeedProfileInvitation(student));
+    }
+
+    private StudentInvitation SeedProfileInvitation(Student student)
+    {
+        var profile = new StudentInvitationProfile(student.Id, student.FirstName, student.LastName, student.FullName, student.Phone, student.Dni);
+        var invitation = StudentInvitation.Send(
+            student.Id, student.Email, 77, Now.AddDays(7).UtcDateTime, "teacher-1", Now.UtcDateTime, profile, requiresRegistrationProfile: true);
+        _invitations.Add(invitation);
+        return invitation;
+    }
+
+    private static AcceptedStudentProfile Accepted(
+        StudentInvitation invitation,
+        Student student,
+        string identityId = "identity-1",
+        string registeredFirstName = "Ana",
+        string registeredLastName = "Pérez",
+        string registeredDni = "01234567") =>
+        new(
+            invitation.ExternalInvitationId,
+            student.Id,
+            identityId,
+            Now,
+            new StudentProfileSnapshot("Ana", "Pérez", "Ana Pérez", null, null),
+            new StudentRegisteredProfile(registeredFirstName, registeredLastName, "+541155550000", registeredDni));
+
+    private sealed class StubAuthcraftInvitationClient : IAuthcraftInvitationClient
+    {
+        public AcceptedStudentProfile? AcceptedProfile { get; set; }
+        public string? AccessToken { get; private set; }
+        public long? RequestedInvitationId { get; private set; }
+
+        public Task<CreatedInvitation> CreateAsync(string email, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CreatedInvitation> ResendAsync(long invitationId, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CreatedInvitation> CreateAsync(
+            string email, StudentInvitationProfile profile, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CreatedInvitation> ResendAsync(
+            long invitationId, string email, StudentInvitationProfile profile, string accessToken, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<AcceptedStudentProfile?> GetAcceptedProfileAsync(
+            long invitationId, string accessToken, CancellationToken cancellationToken = default)
+        {
+            RequestedInvitationId = invitationId;
+            AccessToken = accessToken;
+            return Task.FromResult(AcceptedProfile);
+        }
     }
 }
 

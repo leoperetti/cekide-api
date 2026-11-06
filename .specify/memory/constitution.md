@@ -1,50 +1,115 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+Version change: 1.5.0 → 2.0.0
+Modified principles:
+- I. Responsabilidades por Capas y Contratos Co-localizados → I. Preserve Layered Responsibilities
+- V. Configuración Segura, Legibilidad y Simplicidad → V. Configuración Segura y Explícita
+- VI. Use Table-Specific Infrastructure Repositories → VII. Use Table-Specific Infrastructure Repositories
+Added principles:
+- VI. Código Legible
+Added sections: None
+Removed sections: None
+Follow-up TODOs:
+- Ninguno
+-->
+
+# Cekide API Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Preserve Layered Responsibilities
+El manejo HTTP MUST permanecer en los controladores de API, los conceptos de negocio en Domain y
+las responsabilidades de persistencia en Infrastructure. Application MUST contener únicamente
+servicios que implementan lógica de negocio. Todo el código de acceso a datos y sus abstracciones
+MUST residir en Infrastructure; Application MUST NOT contener acceso a datos ni abstracciones de
+acceso a datos. Las interfaces de servicios MUST declararse junto con las clases que las
+implementan. Estos límites evitan patrones paralelos y mantienen responsabilidades claras.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Seguridad en el Límite de la API
+La API MUST aplicar autenticación, autorización, validación de entradas y, cuando corresponda,
+aislamiento entre tenants en el servidor. MUST NOT confiar en controles del navegador ni en
+identificadores o claims proporcionados por el cliente como prueba de autorización. Las
+credenciales MUST NOT almacenarse en el repositorio; el desarrollo MUST usar el mecanismo de
+secretos configurado y producción MUST usar el almacén de secretos aprobado para el entorno.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Compatibilidad de Contratos de API y Datos
+Las rutas, formas de solicitudes y respuestas, y semántica de los datos persistidos MUST
+mantener compatibilidad, salvo que el cambio documente explícitamente una transición compatible.
+Los cambios de esquema MUST gestionarse mediante migraciones versionadas de EF Core en
+Infrastructure. MUST NOT realizarse cambios manuales de esquema en producción ni cambios que
+alteren datos sin una ruta de migración repetible y revisada.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Cambios Verificables
+Todo cambio de comportamiento MUST incluir o actualizar pruebas automáticas pertinentes, unitarias
+o de integración. Antes de publicar, MUST ejecutarse el build y las pruebas impactadas disponibles;
+un cambio funcional no está completo hasta verificar el comportamiento esperado y sus errores
+principales. Los cambios de contratos, persistencia o integraciones MUST probarse en los límites
+afectados.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Configuración Segura y Explícita
+El código MUST seguir los patrones de configuración existentes de ASP.NET Core. Los secretos MUST
+permanecer fuera del control de versiones. Las nuevas claves de configuración MUST documentar su
+propósito y las fuentes previstas para desarrollo y producción. Los cambios MUST preferir
+soluciones simples y acotadas a refactors no solicitados.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Código Legible
+Las variables MUST usar nombres semánticos y descriptivos. MUST NOT usarse nombres de una sola
+letra, salvo contadores triviales en ciclos cortos. El código nuevo MUST seguir las convenciones y
+patrones existentes de .NET 10.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### VII. Use Table-Specific Infrastructure Repositories
+Para cada tabla de base de datos a la que acceda la aplicación, Infrastructure MUST proporcionar
+una clase de repositorio dedicada a esa tabla. Toda abstracción para acceder a esos datos,
+incluida la interfaz del repositorio, MUST residir en Infrastructure; la interfaz MUST declararse
+dentro de su clase de repositorio. Todas las lecturas y escrituras de la tabla MUST pasar por ese
+repositorio. Esto mantiene explícitos los accesos por tabla y su contrato junto al repositorio
+responsable.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Restricciones Técnicas y de Dominio
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- La solución está orientada a .NET 10 y mantiene las capas API, Application, Domain e
+  Infrastructure.
+- Esta API cubre la operación de un gimnasio: planes, alumnos, pagos, vencimientos e invitaciones.
+  El modelado MUST proteger la integridad de esos procesos, incluidos estados de pago consistentes,
+  vencimientos auditables y relaciones claras entre alumnos y planes.
+- Los entornos de development, staging y producción MUST mantener configuración, credenciales,
+  datos y recursos aislados. Staging y producción MUST alojarse en Azure.
+- Los recursos Azure de esta API MUST crearse dentro del grupo existente `CEKIDE`; esta API MUST
+  NOT crear grupos de recursos adicionales.
+- Los tres entornos MAY compartir una cuenta de Azure Blob Storage. Los archivos MUST guardarse
+  bajo prefijos fijos y distintos (`development/`, `staging/` y `production/`), y cada aplicación
+  MUST limitar sus operaciones al prefijo de su entorno. Los prefijos solo brindan separación
+  lógica: las credenciales de una aplicación MUST NOT permitir acceso indiscriminado a los demás
+  entornos. Las pruebas MUST verificar que no se lean, sobrescriban ni eliminen archivos de otro
+  entorno.
+
+## Flujo de Desarrollo
+
+- Para nuevas funcionalidades, usar Spec Kit para definir especificación, plan y tareas antes de
+  implementar; aclarar preguntas materiales de comportamiento y seguridad antes de planificar.
+- Antes de diseñar un cambio, inspeccionar las capas, controladores, servicios y configuración de
+  persistencia afectados.
+- Ejecutar pruebas enfocadas y el build aplicable antes de considerar terminado un cambio.
+  Revisar especialmente el impacto de migraciones, contratos y configuración de entornos.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+Esta constitution prevalece sobre prácticas ad hoc del proyecto. Las enmiendas requieren acuerdo
+explícito del equipo, actualización de este documento y registro del impacto. Cada pull request
+MUST declarar conformidad con estos principios o justificar explícitamente cualquier desviación
+temporal e incluir un plan de reversión.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+Versionado de la constitution:
+- MAJOR: cambios incompatibles o redefinición de principios.
+- MINOR: nuevos principios, secciones o ampliaciones materiales de reglas normativas.
+- PATCH: aclaraciones sin cambio de alcance normativo.
+
+Revisión de cumplimiento:
+- Cada pull request MUST revisar límites de capas, ubicación de contratos, seguridad, compatibilidad
+  de API y datos, acceso mediante repositorios específicos por tabla, pruebas y migraciones cuando
+  correspondan.
+- Los cambios de despliegue MUST revisar el aislamiento entre entornos, el uso del grupo Azure
+  `CEKIDE` y la restricción de acceso a los prefijos de Blob Storage.
+- Incumplimientos repetidos MUST generar una acción correctiva en la siguiente iteración.
+
+**Version**: 2.0.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-05
