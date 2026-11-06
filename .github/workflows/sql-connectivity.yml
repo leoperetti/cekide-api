@@ -1,0 +1,86 @@
+name: SQL connectivity diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sql-connectivity-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: azure/login@v2
+        id: login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Temporarily allow this runner IP
+        shell: pwsh
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Open -Environment staging -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
+      - name: Validate staging SQL access and cross-environment denial
+        run: dotnet run --project scripts/diagnostics/SqlConnectivity/SqlConnectivity.csproj --configuration Release -- staging
+      - name: Remove this runner firewall rule
+        if: always() && steps.login.outcome == 'success'
+        shell: pwsh
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Close -Environment staging -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: azure/login@v2
+        id: login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Temporarily allow this runner IP
+        shell: pwsh
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Open -Environment production -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT
+      - name: Validate production SQL access and cross-environment denial
+        run: dotnet run --project scripts/diagnostics/SqlConnectivity/SqlConnectivity.csproj --configuration Release -- production
+      - name: Remove this runner firewall rule
+        if: always() && steps.login.outcome == 'success'
+        shell: pwsh
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          & ./scripts/deployment/Set-RunnerSqlFirewall.ps1 -Operation Close -Environment production -SubscriptionId $env:AZURE_SUBSCRIPTION_ID -RunId $env:GITHUB_RUN_ID -RunAttempt $env:GITHUB_RUN_ATTEMPT

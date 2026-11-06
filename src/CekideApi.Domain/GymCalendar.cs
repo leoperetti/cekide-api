@@ -10,6 +10,21 @@ public static class GymCalendar
     public static DateOnly Today(DateTimeOffset utcNow) =>
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, TimeZone).DateTime);
 
+    public static DateOnly WeekStart(DateOnly date) =>
+        date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
+    public static DateOnly WeekEndExclusive(DateOnly date) => WeekStart(date).AddDays(7);
+
+    public static DateOnly MonthStart(DateOnly date) => new(date.Year, date.Month, 1);
+
+    public static DateOnly MonthEndExclusive(DateOnly date) => MonthStart(date).AddMonths(1);
+
+    public static bool IsRecoveryWeekday(DateOnly date) =>
+        date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
+
+    public static DateTimeOffset StartOfDayUtc(DateOnly date) =>
+        new(TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(TimeOnly.MinValue), TimeZone));
+
     private static TimeZoneInfo Resolve()
     {
         try

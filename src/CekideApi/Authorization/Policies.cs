@@ -15,6 +15,7 @@ public static class Policies
     public const string OwnerOnly = "OwnerOnly";
     public const string StaffOnly = "StaffOnly";
     public const string StudentOnly = "StudentOnly";
+    public const string KioskOnly = "KioskOnly";
 
     public static IServiceCollection AddCekideAuthorization(this IServiceCollection services)
     {
@@ -31,6 +32,10 @@ public static class Policies
             options.AddPolicy(OwnerOnly, Base().RequireRole(Roles.Owner).Build());
             options.AddPolicy(StaffOnly, Base().RequireRole(Roles.Owner, Roles.Teacher).Build());
             options.AddPolicy(StudentOnly, Base().RequireRole(Roles.User).Build());
+            options.AddPolicy(KioskOnly, new AuthorizationPolicyBuilder(KioskAuthenticationHandler.SchemeName)
+                .RequireAuthenticatedUser()
+                .RequireRole(KioskAuthenticationHandler.Role)
+                .Build());
         });
 
         return services;

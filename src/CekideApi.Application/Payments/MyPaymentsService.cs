@@ -11,10 +11,19 @@ public sealed class MyPaymentsService(
     IPlanRepository plans,
     IClock clock)
 {
+    public Task<IReadOnlyList<MyPaymentDto>> ListAsync(
+        string? identityId,
+        string? email,
+        CancellationToken cancellationToken = default) =>
+        ListAsync(identityId, email, null, cancellationToken);
+
     public async Task<IReadOnlyList<MyPaymentDto>> ListAsync(
-        string? identityId, string? email, CancellationToken cancellationToken = default)
+        string? identityId,
+        string? email,
+        string? accessToken,
+        CancellationToken cancellationToken = default)
     {
-        var link = await linking.TryLinkAsync(identityId, email, cancellationToken);
+        var link = await linking.TryLinkAsync(identityId, email, accessToken, cancellationToken);
         var student = link.Outcome switch
         {
             LinkOutcome.Linked or LinkOutcome.AlreadyLinked => link.Student!,

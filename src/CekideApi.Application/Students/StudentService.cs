@@ -1,5 +1,6 @@
 using CekideApi.Application.Abstractions;
 using CekideApi.Application.Payments;
+using CekideApi.Application.Recoveries;
 using CekideApi.Domain;
 
 namespace CekideApi.Application.Students;
@@ -10,7 +11,9 @@ public sealed class StudentService(
     IUnitOfWork unitOfWork,
     IClock clock,
     PaymentService payments,
-    IStudentInvitationRepository invitations)
+    IStudentInvitationRepository invitations,
+    IAttendanceTransaction attendanceTransaction,
+    RecoveryAccrualService recoveryAccrual)
 {
     public async Task<IReadOnlyList<StudentDto>> ListAsync(string? search, bool? active, CancellationToken cancellationToken = default)
     {
@@ -31,40 +34,53 @@ public sealed class StudentService(
             await RequireAssignablePlanAsync(planId, cancellationToken);
         }
 
-        var student = Student.Create(request.FullName, request.Email, request.Phone, request.PlanId, Today());
+        var student = Student.Create(request.FullName, request.Email, request.Phone, request.PlanId, Today(),
+            request.Dni, request.FirstName, request.LastName);
         await EnsureEmailAvailableAsync(student.Email, null, cancellationToken);
 
         students.Add(student);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        await recoveryAccrual.CaptureCurrentWeekForStudentAsync(student.Id, cancellationToken);
         return (await MapAsync([student], cancellationToken)).Single();
     }
 
     public async Task<StudentDto> UpdateAsync(int studentId, UpdateStudentRequest request, CancellationToken cancellationToken = default)
     {
-        var student = await RequireAsync(studentId, cancellationToken);
-
-        student.Update(request.FullName, request.Email, request.Phone);
-        await EnsureEmailAvailableAsync(student.Email, student.Id, cancellationToken);
-
-        if (request.PlanId is { } planId)
+        var updated = await attendanceTransaction.ExecuteForStudentAsync(studentId, async token =>
         {
-            if (student.PlanIdOn(Today()) != planId)
+            var student = await RequireAsync(studentId, token);
+            student.Update(request.FullName, request.Email, request.Phone, request.Dni, request.FirstName, request.LastName);
+            await EnsureEmailAvailableAsync(student.Email, student.Id, token);
+
+            if (request.PlanId is { } planId)
             {
-                await RequireAssignablePlanAsync(planId, cancellationToken);
+                if (student.PlanIdOn(Today()) != planId)
+                {
+                    await RequireAssignablePlanAsync(planId, token);
+                }
+
+                student.ChangePlan(planId, Today());
             }
 
-            student.ChangePlan(planId, Today());
+            return (await MapAsync([student], token)).Single();
+        }, cancellationToken);
+        if (request.PlanId is not null)
+        {
+            await recoveryAccrual.CaptureCurrentWeekForStudentAsync(studentId, cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        return (await MapAsync([student], cancellationToken)).Single();
+        return updated;
     }
 
     public async Task DeactivateAsync(int studentId, CancellationToken cancellationToken = default)
     {
-        var student = await RequireAsync(studentId, cancellationToken);
-        student.Deactivate();
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        await attendanceTransaction.ExecuteForStudentAsync(studentId, async token =>
+        {
+            var student = await RequireAsync(studentId, token);
+            student.Deactivate();
+            return true;
+        }, cancellationToken);
+        await recoveryAccrual.CaptureCurrentWeekForStudentAsync(studentId, cancellationToken);
     }
 
     private DateOnly Today() => GymCalendar.Today(clock.UtcNow);
@@ -120,7 +136,10 @@ public sealed class StudentService(
                 student.RoutineUploadedBy,
                 PaymentStatus: statuses[student.Id],
                 IdentityId: student.IdentityId,
-                InvitationStatus: invitationStatuses.TryGetValue(student.Id, out var invitation) ? invitation : null);
+                InvitationStatus: invitationStatuses.TryGetValue(student.Id, out var invitation) ? invitation : null,
+                Dni: student.Dni,
+                FirstName: student.FirstName,
+                LastName: student.LastName);
         }).ToList();
     }
 }

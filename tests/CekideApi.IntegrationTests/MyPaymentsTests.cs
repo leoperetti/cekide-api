@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CekideApi.Domain;
 using CekideApi.IntegrationTests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -136,6 +137,80 @@ public class MyPaymentsTests : ApiTestBase
     }
 
     [Fact]
+    public async Task First_access_syncs_an_accepted_invitation_and_retries_without_another_upstream_call()
+    {
+        var studentId = Id(await CreateStudentAsync(email: StudentEmail));
+        Assert.Equal(HttpStatusCode.Accepted, (await Teacher.PostAsync(
+            $"/api/gym/students/{studentId}/invitations", null)).StatusCode);
+        Factory.Authcraft.AcceptedProfile = AcceptedProfile(studentId, 100, "student-1", "01234567");
+
+        Assert.Equal(HttpStatusCode.OK, (await MineAsync()).StatusCode);
+
+        var student = await Factory.WithDbAsync(db => db.Students.AsNoTracking().SingleAsync(s => s.Id == studentId));
+        var invitation = await Factory.WithDbAsync(db => db.StudentInvitations.AsNoTracking().SingleAsync());
+        Assert.Equal("student-1", student.IdentityId);
+        Assert.Equal("01234567", student.Dni);
+        Assert.Equal(InvitationStatus.Accepted, invitation.Status);
+        Assert.NotNull(invitation.ProfileSyncedAt);
+        Assert.Equal("accepted-profile", Factory.Authcraft.Calls.Last().Operation);
+        Assert.Equal(Student.DefaultRequestHeaders.Authorization!.Parameter, Factory.Authcraft.Calls.Last().AccessToken);
+
+        Assert.Equal(HttpStatusCode.OK, (await MineAsync()).StatusCode);
+        Assert.Single(Factory.Authcraft.Calls, call => call.Operation == "accepted-profile");
+    }
+
+    [Fact]
+    public async Task Upstream_failure_does_not_partially_link_or_synchronize_the_profile()
+    {
+        var studentId = Id(await CreateStudentAsync(email: StudentEmail));
+        await Teacher.PostAsync($"/api/gym/students/{studentId}/invitations", null);
+        Factory.Authcraft.FailNext = new UpstreamServiceException("authcraft-api is unavailable.");
+
+        Assert.Equal(HttpStatusCode.BadGateway, (await MineAsync()).StatusCode);
+
+        var student = await Factory.WithDbAsync(db => db.Students.AsNoTracking().SingleAsync(s => s.Id == studentId));
+        var invitation = await Factory.WithDbAsync(db => db.StudentInvitations.AsNoTracking().SingleAsync());
+        Assert.Null(student.IdentityId);
+        Assert.Null(student.Dni);
+        Assert.Null(invitation.ProfileSyncedAt);
+        Assert.Equal(InvitationStatus.Sent, invitation.Status);
+    }
+
+    [Fact]
+    public async Task A_duplicate_DNI_is_rejected_and_staff_correction_allows_a_safe_retry()
+    {
+        var studentId = Id(await CreateStudentAsync(email: StudentEmail));
+        await CreateStudentAsync(email: "other@example.com");
+        await Teacher.PostAsync($"/api/gym/students/{studentId}/invitations", null);
+        await Factory.WithDbAsync(async db =>
+        {
+            var other = await db.Students.SingleAsync(s => s.Email == "other@example.com");
+            other.Update(other.FullName, other.Email, other.Phone, "01234567");
+            return await db.SaveChangesAsync();
+        });
+        Factory.Authcraft.AcceptedProfile = AcceptedProfile(studentId, 100, "student-1", "01234567");
+
+        Assert.Equal(HttpStatusCode.Conflict, (await MineAsync()).StatusCode);
+
+        var linkedBeforeFix = await Factory.WithDbAsync(db => db.Students.AsNoTracking().SingleAsync(s => s.Id == studentId));
+        Assert.Null(linkedBeforeFix.IdentityId);
+        Assert.Null(linkedBeforeFix.Dni);
+
+        await Factory.WithDbAsync(async db =>
+        {
+            var other = await db.Students.SingleAsync(s => s.Email == "other@example.com");
+            other.Update(other.FullName, other.Email, other.Phone, "76543210");
+            return await db.SaveChangesAsync();
+        });
+
+        Assert.Equal(HttpStatusCode.OK, (await MineAsync()).StatusCode);
+        var linkedAfterFix = await Factory.WithDbAsync(db => db.Students.AsNoTracking().SingleAsync(s => s.Id == studentId));
+        Assert.Equal("student-1", linkedAfterFix.IdentityId);
+        Assert.Equal("01234567", linkedAfterFix.Dni);
+        Assert.Equal(2, Factory.Authcraft.Calls.Count(call => call.Operation == "accepted-profile"));
+    }
+
+    [Fact]
     public async Task An_account_without_a_matching_student_is_not_found()
     {
         await CreateStudentAsync(email: "beto@example.com");
@@ -173,6 +248,15 @@ public class MyPaymentsTests : ApiTestBase
     {
         Assert.Equal(HttpStatusCode.Unauthorized, (await MineAsync(Anonymous)).StatusCode);
     }
+
+    private static AcceptedStudentProfile AcceptedProfile(int studentId, long invitationId, string identityId, string dni) =>
+        new(
+            invitationId,
+            studentId,
+            identityId,
+            DateTimeOffset.UtcNow,
+            new StudentProfileSnapshot(null, null, "Ana Pérez", "1155550000", null),
+            new StudentRegisteredProfile("Ana", "Pérez", "1155550000", dni));
 
     [Fact]
     public async Task A_deactivated_student_is_forbidden_even_when_already_linked()

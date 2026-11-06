@@ -13,5 +13,5 @@ public class MyPaymentsController(MyPaymentsService myPayments) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<MyPaymentDto>>> List(CancellationToken cancellationToken) =>
-        Ok(await myPayments.ListAsync(User.GetSubject(), User.GetEmail(), cancellationToken));
+        Ok(await myPayments.ListAsync(User.GetSubject(), User.GetEmail(), Request.GetBearerToken(), cancellationToken));
 }

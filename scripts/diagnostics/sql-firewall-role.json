@@ -1,0 +1,16 @@
+{
+  "Name": "Cekide SQL Runner Firewall Operator",
+  "IsCustom": true,
+  "Description": "Manage temporary GitHub runner firewall rules on the existing Cekide SQL server. No database or data permissions.",
+  "Actions": [
+    "Microsoft.Sql/servers/firewallRules/read",
+    "Microsoft.Sql/servers/firewallRules/write",
+    "Microsoft.Sql/servers/firewallRules/delete"
+  ],
+  "NotActions": [],
+  "DataActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/948a8f49-fd90-40d9-8fa9-12f722768a7a/resourceGroups/CEKIDE"
+  ]
+}

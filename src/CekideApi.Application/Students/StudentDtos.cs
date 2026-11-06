@@ -2,10 +2,12 @@ using CekideApi.Domain;
 
 namespace CekideApi.Application.Students;
 
-public sealed record CreateStudentRequest(string? FullName, string? Email, string? Phone, int? PlanId);
+public sealed record CreateStudentRequest(string? FullName, string? Email, string? Phone, int? PlanId,
+    string? Dni = null, string? FirstName = null, string? LastName = null);
 
 /// <summary>PlanId = null leaves the current plan unchanged.</summary>
-public sealed record UpdateStudentRequest(string? FullName, string? Email, string? Phone, int? PlanId);
+public sealed record UpdateStudentRequest(string? FullName, string? Email, string? Phone, int? PlanId,
+    string? Dni = null, string? FirstName = null, string? LastName = null);
 
 /// <param name="PaymentStatus">paid | pending | overdue for the current month; null when the student has no monthly obligation.</param>
 /// <param name="IdentityId">authcraft identity once the student accepted the invitation; null while unlinked.</param>
@@ -27,6 +29,9 @@ public sealed record StudentDto(
     string? RoutineUploadedBy,
     string? PaymentStatus,
     string? IdentityId,
-    InvitationStatus? InvitationStatus);
+    InvitationStatus? InvitationStatus,
+    string? Dni = null,
+    string? FirstName = null,
+    string? LastName = null);
 
 public sealed record RoutineDownload(Stream Content, string FileName);

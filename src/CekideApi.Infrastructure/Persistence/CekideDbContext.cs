@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using CekideApi.Application.Abstractions;
 using CekideApi.Domain;
@@ -10,6 +11,26 @@ namespace CekideApi.Infrastructure.Persistence;
 public partial class CekideDbContext(DbContextOptions<CekideDbContext> options, IClock clock) : DbContext(options)
 {
     public DbSet<Plan> Plans => Set<Plan>();
+
+    public DbSet<PlanAttendanceLimits> PlanAttendanceLimits => Set<PlanAttendanceLimits>();
+
+    public DbSet<AttendancePeriod> AttendancePeriods => Set<AttendancePeriod>();
+
+    public DbSet<Attendance> Attendances => Set<Attendance>();
+
+    public DbSet<KioskSession> KioskSessions => Set<KioskSession>();
+
+    public DbSet<AttendanceQuotaNotification> AttendanceQuotaNotifications => Set<AttendanceQuotaNotification>();
+
+    public DbSet<GymShift> GymShifts => Set<GymShift>();
+
+    public DbSet<ShiftHabitualOccupancy> ShiftHabitualOccupancies => Set<ShiftHabitualOccupancy>();
+
+    public DbSet<RecoveryWeek> RecoveryWeeks => Set<RecoveryWeek>();
+
+    public DbSet<RecoveryCredit> RecoveryCredits => Set<RecoveryCredit>();
+
+    public DbSet<RecoveryReservation> RecoveryReservations => Set<RecoveryReservation>();
 
     public DbSet<PassTariff> PassTariffs => Set<PassTariff>();
 
@@ -35,6 +56,30 @@ public partial class CekideDbContext(DbContextOptions<CekideDbContext> options, 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CekideDbContext).Assembly);
+
+        if (Database.IsSqlServer())
+        {
+            modelBuilder.Entity<GymShift>().ToTable("gym_shifts", table =>
+                table.HasCheckConstraint(
+                    "CK_gym_shifts_duration",
+                    "ends_at > starts_at AND DATEDIFF(MINUTE, starts_at, ends_at) = 60"));
+        }
+        else if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            modelBuilder.Entity<GymShift>().ToTable("gym_shifts", table =>
+                table.HasCheckConstraint(
+                    "CK_gym_shifts_duration",
+                    "ends_at > starts_at AND time(ends_at) = time(starts_at, '+60 minutes')"));
+        }
+
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            // SQLite has no native rowversion; integration tests emulate it with a concurrency token.
+            modelBuilder.Entity<KioskSession>()
+                .Property(session => session.RowVersion)
+                .IsConcurrencyToken()
+                .ValueGeneratedNever();
+        }
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
@@ -71,6 +116,21 @@ public partial class CekideDbContext(DbContextOptions<CekideDbContext> options, 
             {
                 entry.Property(e => e.CreatedAt).IsModified = false;
                 entry.Entity.UpdatedAt = now;
+            }
+
+        }
+
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            foreach (var kioskEntry in ChangeTracker.Entries<KioskSession>()
+                         .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+            {
+                var rowVersion = kioskEntry.Property(session => session.RowVersion);
+                rowVersion.CurrentValue = RandomNumberGenerator.GetBytes(8);
+                if (kioskEntry.State == EntityState.Modified)
+                {
+                    rowVersion.IsModified = true;
+                }
             }
         }
     }

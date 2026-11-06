@@ -7,6 +7,14 @@ public sealed class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorH
 {
     public async Task InvokeAsync(HttpContext context)
     {
+        if (context.Request.Path.StartsWithSegments("/api/gym/me") ||
+            context.Request.Path.StartsWithSegments("/api/gym/attendance-notifications") ||
+            context.Request.Path.StartsWithSegments("/api/gym/students") &&
+            context.Request.Path.Value?.Contains("/recovery-reservations", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            context.Response.Headers.CacheControl = "no-store";
+        }
+
         try
         {
             await next(context);
@@ -17,17 +25,35 @@ public sealed class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorH
 
             if (status >= 500)
             {
-                logger.LogError(exception, "Unhandled exception for {Method} {Path}", context.Request.Method, context.Request.Path);
+                logger.LogError("Request failed with {Status}, exception {ExceptionType}, trace {TraceId}",
+                    status, exception.GetType().Name, context.TraceIdentifier);
             }
             else
             {
-                logger.LogInformation("Request rejected with {Status}: {Message}", status, exception.Message);
+                logger.LogInformation("Request rejected with {Status}, exception {ExceptionType}, trace {TraceId}",
+                    status, exception.GetType().Name, context.TraceIdentifier);
             }
 
             context.Response.Clear();
             context.Response.StatusCode = status;
+            var problem = new ProblemDetails { Status = status, Title = title, Detail = detail };
+            if (exception is AttendanceException attendance)
+            {
+                problem.Extensions["code"] = attendance.Code;
+                context.Response.Headers.CacheControl = "no-store";
+            }
+
+            if (context.Request.Path.StartsWithSegments("/api/gym/shifts") ||
+                context.Request.Path.StartsWithSegments("/api/gym/attendance-notifications") ||
+                context.Request.Path.StartsWithSegments("/api/gym/me") ||
+                context.Request.Path.StartsWithSegments("/api/gym/students") &&
+                context.Request.Path.Value?.Contains("/recovery-reservations", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                context.Response.Headers.CacheControl = "no-store";
+            }
+
             await context.Response.WriteAsJsonAsync(
-                new ProblemDetails { Status = status, Title = title, Detail = detail },
+                problem,
                 options: null,
                 contentType: "application/problem+json");
         }
@@ -35,6 +61,9 @@ public sealed class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorH
 
     private static (int Status, string Title, string Detail) Map(Exception exception) => exception switch
     {
+        AttendanceException attendance => (attendance.StatusCode,
+            Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(attendance.StatusCode),
+            attendance.StatusCode >= 500 ? "The operation could not be completed." : attendance.Message),
         DomainValidationException => (StatusCodes.Status400BadRequest, "Bad Request", exception.Message),
         ForbiddenException => (StatusCodes.Status403Forbidden, "Forbidden", exception.Message),
         NotFoundException => (StatusCodes.Status404NotFound, "Not Found", exception.Message),

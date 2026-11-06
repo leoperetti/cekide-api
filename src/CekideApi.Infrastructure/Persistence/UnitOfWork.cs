@@ -12,8 +12,21 @@ public sealed class UnitOfWork(CekideDbContext context) : IUnitOfWork
         {
             await context.SaveChangesAsync(cancellationToken);
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConflictException("The record was modified concurrently.");
+        }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
+            foreach (var student in exception.Entries.Select(e => e.Entity).OfType<Student>())
+            {
+                if (student.Dni is not null && await context.Students.AsNoTracking()
+                    .AnyAsync(s => s.Dni == student.Dni && s.Id != student.Id, cancellationToken))
+                {
+                    throw new AttendanceException(409, "dni_already_exists", "Another student already uses this DNI.");
+                }
+            }
+
             throw new ConflictException("The record conflicts with an existing one.");
         }
     }
@@ -31,4 +44,5 @@ public sealed class UnitOfWork(CekideDbContext context) : IUnitOfWork
         { } inner => inner.Message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase),
         _ => false
     };
+
 }

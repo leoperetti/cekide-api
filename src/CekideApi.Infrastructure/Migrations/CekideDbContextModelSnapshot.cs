@@ -22,6 +22,464 @@ namespace CekideApi.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("CekideApi.Domain.Attendance", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttendancePeriodId")
+                        .HasColumnType("int")
+                        .HasColumnName("attendance_period_id");
+
+                    b.Property<string>("ChargeKind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("charge_kind");
+
+                    b.Property<DateTime>("CheckedInAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("checked_in_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("KioskSessionId")
+                        .HasColumnType("int")
+                        .HasColumnName("kiosk_session_id");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date")
+                        .HasColumnName("local_date");
+
+                    b.Property<bool>("MonthlyExceeded")
+                        .HasColumnType("bit")
+                        .HasColumnName("monthly_exceeded");
+
+                    b.Property<bool>("MonthlyExhausted")
+                        .HasColumnType("bit")
+                        .HasColumnName("monthly_exhausted");
+
+                    b.Property<int?>("RecoveryCreditId")
+                        .HasColumnType("int")
+                        .HasColumnName("recovery_credit_id");
+
+                    b.Property<int?>("ShiftId")
+                        .HasColumnType("int")
+                        .HasColumnName("shift_id");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("source");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<bool>("WeeklyExceeded")
+                        .HasColumnType("bit")
+                        .HasColumnName("weekly_exceeded");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KioskSessionId");
+
+                    b.HasIndex("RecoveryCreditId")
+                        .IsUnique()
+                        .HasFilter("recovery_credit_id IS NOT NULL");
+
+                    b.HasIndex("ShiftId");
+
+                    b.HasIndex("StudentId", "AttendancePeriodId");
+
+                    b.HasIndex("StudentId", "LocalDate")
+                        .IsUnique();
+
+                    b.ToTable("attendances", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_attendances_charge_recovery", "(charge_kind = 'ordinary' AND recovery_credit_id IS NULL) OR (charge_kind = 'recovery' AND recovery_credit_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_attendances_source_kiosk", "(source = 'kiosk' AND kiosk_session_id IS NOT NULL) OR (source = 'self' AND kiosk_session_id IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.AttendancePeriod", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("MonthlyLimit")
+                        .HasColumnType("int")
+                        .HasColumnName("monthly_limit");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasColumnType("char(7)")
+                        .HasColumnName("period");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    b.Property<int>("PlanLimitsId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_limits_id");
+
+                    b.Property<string>("PlanName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("plan_name");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("WeeklyLimit")
+                        .HasColumnType("int")
+                        .HasColumnName("weekly_limit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanId", "PlanLimitsId");
+
+                    b.HasIndex("StudentId", "Period")
+                        .IsUnique();
+
+                    b.ToTable("attendance_periods", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_attendance_periods_monthly_limit", "monthly_limit > 0");
+
+                            t.HasCheckConstraint("CK_attendance_periods_weekly_limit", "weekly_limit BETWEEN 1 AND 7");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.AttendanceQuotaNotification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int")
+                        .HasColumnName("attempts");
+
+                    b.Property<int>("AttendancePeriodId")
+                        .HasColumnType("int")
+                        .HasColumnName("attendance_period_id");
+
+                    b.Property<string>("ClaimId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("claim_id");
+
+                    b.Property<DateTime?>("ClaimedUntil")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("claimed_until");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("last_error");
+
+                    b.Property<int>("MonthlyLimit")
+                        .HasColumnType("int")
+                        .HasColumnName("monthly_limit");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .IsUnicode(false)
+                        .HasColumnType("char(7)")
+                        .HasColumnName("period")
+                        .IsFixedLength();
+
+                    b.Property<string>("PlanName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("plan_name");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)")
+                        .HasColumnName("recipient_email");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("recipient_name");
+
+                    b.Property<int?>("RecommendedMonthlyDays")
+                        .HasColumnType("int")
+                        .HasColumnName("recommended_monthly_days");
+
+                    b.Property<int?>("RecommendedPlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("recommended_plan_id");
+
+                    b.Property<string>("RecommendedPlanName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("recommended_plan_name");
+
+                    b.Property<decimal?>("RecommendedPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasColumnName("recommended_price");
+
+                    b.Property<string>("ResolutionEvidence")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("resolution_evidence");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("resolved_by");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.HasIndex("StudentId", "AttendancePeriodId");
+
+                    b.HasIndex("StudentId", "Period")
+                        .IsUnique();
+
+                    b.ToTable("attendance_quota_notifications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_attendance_quota_notifications_attempts", "attempts >= 0");
+
+                            t.HasCheckConstraint("CK_attendance_quota_notifications_monthly_limit", "monthly_limit > 0");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.GymShift", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<string>("CancelledBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("cancelled_by");
+
+                    b.Property<int>("Capacity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(12)
+                        .HasColumnName("capacity");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("created_by");
+
+                    b.Property<TimeOnly>("EndsAt")
+                        .HasColumnType("time(0)")
+                        .HasColumnName("ends_at");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date")
+                        .HasColumnName("local_date");
+
+                    b.Property<TimeOnly>("StartsAt")
+                        .HasColumnType("time(0)")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("LocalDate", "StartsAt")
+                        .IsUnique();
+
+                    b.ToTable("gym_shifts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_gym_shifts_cancellation_audit", "(status = 'open' AND cancelled_by IS NULL AND cancelled_at IS NULL) OR (status = 'cancelled' AND cancelled_by IS NOT NULL AND cancelled_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_gym_shifts_capacity", "capacity = 12");
+
+                            t.HasCheckConstraint("CK_gym_shifts_duration", "ends_at > starts_at AND DATEDIFF(MINUTE, starts_at, ends_at) = 60");
+
+                            t.HasCheckConstraint("CK_gym_shifts_status", "status IN ('open', 'cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.KioskSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ActivatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("activated_at");
+
+                    b.Property<string>("ActivationCodeHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("activation_code_hash");
+
+                    b.Property<DateTime>("ActivationExpiresAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("activation_expires_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("label");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("RevokedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("revoked_by");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Tenant")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("tenant");
+
+                    b.Property<string>("TokenHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActivationCodeHash")
+                        .IsUnique()
+                        .HasFilter("activation_code_hash IS NOT NULL");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasFilter("token_hash IS NOT NULL");
+
+                    b.HasIndex("Tenant", "CreatedAt");
+
+                    b.ToTable("kiosk_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_kiosk_sessions_activation_expiry", "activation_expires_at > created_at");
+
+                            t.HasCheckConstraint("CK_kiosk_sessions_activation_state", "(activated_at IS NULL AND token_hash IS NULL AND expires_at IS NULL) OR (activated_at IS NOT NULL AND token_hash IS NOT NULL AND expires_at > activated_at)");
+                        });
+                });
+
             modelBuilder.Entity("CekideApi.Domain.MonthlyPayment", b =>
                 {
                     b.Property<int>("Id")
@@ -279,6 +737,388 @@ namespace CekideApi.Infrastructure.Migrations
                     b.ToTable("plans", (string)null);
                 });
 
+            modelBuilder.Entity("CekideApi.Domain.PlanAttendanceLimits", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ConfiguredBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("configured_by");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<int>("MonthlyDays")
+                        .HasColumnType("int")
+                        .HasColumnName("monthly_days");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("WeeklyDays")
+                        .HasColumnType("int")
+                        .HasColumnName("weekly_days");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanId", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("plan_attendance_limits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_plan_attendance_limits_monthly_days", "monthly_days > 0");
+
+                            t.HasCheckConstraint("CK_plan_attendance_limits_weekly_days", "weekly_days BETWEEN 1 AND 7");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.RecoveryCredit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttendancePeriodId")
+                        .HasColumnType("int")
+                        .HasColumnName("attendance_period_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly?>("ExceptionEndExclusive")
+                        .HasColumnType("date")
+                        .HasColumnName("exception_end_exclusive");
+
+                    b.Property<DateOnly?>("ExceptionStart")
+                        .HasColumnType("date")
+                        .HasColumnName("exception_start");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateOnly?>("NormalEndExclusive")
+                        .HasColumnType("date")
+                        .HasColumnName("normal_end_exclusive");
+
+                    b.Property<DateOnly?>("NormalStart")
+                        .HasColumnType("date")
+                        .HasColumnName("normal_start");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("int")
+                        .HasColumnName("ordinal");
+
+                    b.Property<string>("OriginPeriod")
+                        .IsRequired()
+                        .HasColumnType("char(7)")
+                        .HasColumnName("origin_period");
+
+                    b.Property<int>("PlanLimitsId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_limits_id");
+
+                    b.Property<int>("RecoveryWeekId")
+                        .HasColumnType("int")
+                        .HasColumnName("recovery_week_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("used_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanLimitsId");
+
+                    b.HasIndex("RecoveryWeekId", "Ordinal")
+                        .IsUnique();
+
+                    b.HasIndex("StudentId", "AttendancePeriodId");
+
+                    b.HasIndex("StudentId", "RecoveryWeekId");
+
+                    b.HasIndex("StudentId", "Status");
+
+                    b.ToTable("recovery_credits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_recovery_credits_exception_window", "(exception_start IS NULL AND exception_end_exclusive IS NULL) OR (exception_start IS NOT NULL AND exception_end_exclusive IS NOT NULL AND exception_start < exception_end_exclusive)");
+
+                            t.HasCheckConstraint("CK_recovery_credits_normal_window", "(normal_start IS NULL AND normal_end_exclusive IS NULL) OR (normal_start IS NOT NULL AND normal_end_exclusive IS NOT NULL AND normal_start < normal_end_exclusive)");
+
+                            t.HasCheckConstraint("CK_recovery_credits_ordinal", "ordinal > 0");
+
+                            t.HasCheckConstraint("CK_recovery_credits_status", "status IN ('available', 'reserved', 'used', 'expired')");
+
+                            t.HasCheckConstraint("CK_recovery_credits_used_at", "(status = 'used' AND used_at IS NOT NULL) OR (status <> 'used' AND used_at IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.RecoveryReservation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AttendedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("attended_at");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<string>("CancelledReason")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("cancelled_reason");
+
+                    b.Property<DateTime>("ConfirmedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date")
+                        .HasColumnName("local_date");
+
+                    b.Property<int>("RecoveryCreditId")
+                        .HasColumnType("int")
+                        .HasColumnName("recovery_credit_id");
+
+                    b.Property<int>("ShiftId")
+                        .HasColumnType("int")
+                        .HasColumnName("shift_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecoveryCreditId")
+                        .IsUnique()
+                        .HasFilter("status = 'confirmed'");
+
+                    b.HasIndex("ShiftId");
+
+                    b.HasIndex("StudentId", "LocalDate")
+                        .IsUnique()
+                        .HasFilter("status = 'confirmed'");
+
+                    b.HasIndex("StudentId", "RecoveryCreditId");
+
+                    b.ToTable("recovery_reservations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_recovery_reservations_cancelled_reason", "(status = 'cancelled' AND cancelled_reason IN ('student', 'shift_cancelled')) OR (status <> 'cancelled' AND cancelled_reason IS NULL)");
+
+                            t.HasCheckConstraint("CK_recovery_reservations_status", "status IN ('confirmed', 'attended', 'cancelled', 'missed')");
+
+                            t.HasCheckConstraint("CK_recovery_reservations_transition_audit", "(status = 'confirmed' AND attended_at IS NULL AND cancelled_at IS NULL AND cancelled_reason IS NULL) OR (status = 'attended' AND attended_at IS NOT NULL AND cancelled_at IS NULL AND cancelled_reason IS NULL) OR (status = 'cancelled' AND attended_at IS NULL AND cancelled_at IS NOT NULL AND cancelled_reason IS NOT NULL) OR (status = 'missed' AND attended_at IS NULL AND cancelled_at IS NULL AND cancelled_reason IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.RecoveryWeek", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttendancePeriodId")
+                        .HasColumnType("int")
+                        .HasColumnName("attendance_period_id");
+
+                    b.Property<int?>("AttendedCount")
+                        .HasColumnType("int")
+                        .HasColumnName("attended_count");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Eligibility")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("eligibility");
+
+                    b.Property<int?>("GrantedCount")
+                        .HasColumnType("int")
+                        .HasColumnName("granted_count");
+
+                    b.Property<string>("OriginPeriod")
+                        .IsRequired()
+                        .HasColumnType("char(7)")
+                        .HasColumnName("origin_period");
+
+                    b.Property<int>("PlanLimitsId")
+                        .HasColumnType("int")
+                        .HasColumnName("plan_limits_id");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateOnly>("WeekEndExclusive")
+                        .HasColumnType("date")
+                        .HasColumnName("week_end_exclusive");
+
+                    b.Property<DateOnly>("WeekStart")
+                        .HasColumnType("date")
+                        .HasColumnName("week_start");
+
+                    b.Property<int>("WeeklyTarget")
+                        .HasColumnType("int")
+                        .HasColumnName("weekly_target");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanLimitsId");
+
+                    b.HasIndex("StudentId", "AttendancePeriodId");
+
+                    b.HasIndex("StudentId", "WeekStart")
+                        .IsUnique();
+
+                    b.ToTable("recovery_weeks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_recovery_weeks_close_counts", "(closed_at IS NULL AND attended_count IS NULL AND granted_count IS NULL) OR (closed_at IS NOT NULL AND attended_count IS NOT NULL AND attended_count >= 0 AND granted_count IS NOT NULL AND granted_count BETWEEN 0 AND weekly_target)");
+
+                            t.HasCheckConstraint("CK_recovery_weeks_eligibility", "eligibility IN ('eligible', 'excluded')");
+
+                            t.HasCheckConstraint("CK_recovery_weeks_weekly_target", "weekly_target BETWEEN 1 AND 5");
+                        });
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.ShiftHabitualOccupancy", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date")
+                        .HasColumnName("local_date");
+
+                    b.Property<string>("RegisteredBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("registered_by");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("removed_at");
+
+                    b.Property<string>("RemovedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("removed_by");
+
+                    b.Property<int>("ShiftId")
+                        .HasColumnType("int")
+                        .HasColumnName("shift_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("int")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShiftId", "StudentId")
+                        .IsUnique()
+                        .HasFilter("status = 'active'");
+
+                    b.HasIndex("StudentId", "LocalDate")
+                        .IsUnique()
+                        .HasFilter("status = 'active'");
+
+                    b.ToTable("shift_habitual_occupancies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_shift_habitual_occupancies_removal_audit", "(status = 'active' AND removed_by IS NULL AND removed_at IS NULL) OR (status = 'removed' AND removed_by IS NOT NULL AND removed_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_shift_habitual_occupancies_status", "status IN ('active', 'removed')");
+                        });
+                });
+
             modelBuilder.Entity("CekideApi.Domain.ShortTermPass", b =>
                 {
                     b.Property<int>("Id")
@@ -355,11 +1195,21 @@ namespace CekideApi.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Dni")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)")
+                        .HasColumnName("dni");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
                         .HasColumnType("nvarchar(254)")
                         .HasColumnName("email");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("first_name");
 
                     b.Property<string>("FullName")
                         .IsRequired()
@@ -375,6 +1225,11 @@ namespace CekideApi.Infrastructure.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit")
                         .HasColumnName("is_active");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("last_name");
 
                     b.Property<DateOnly?>("MonthlyMembershipStartedOn")
                         .HasColumnType("date")
@@ -422,10 +1277,16 @@ namespace CekideApi.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Dni")
+                        .IsUnique()
+                        .HasFilter("dni IS NOT NULL");
+
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.HasIndex("IdentityId");
+                    b.HasIndex("IdentityId")
+                        .IsUnique()
+                        .HasFilter("identity_id IS NOT NULL");
 
                     b.HasIndex("PendingPlanId");
 
@@ -447,6 +1308,11 @@ namespace CekideApi.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Dni")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)")
+                        .HasColumnName("dni");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(254)
@@ -460,6 +1326,36 @@ namespace CekideApi.Infrastructure.Migrations
                     b.Property<long>("ExternalInvitationId")
                         .HasColumnType("bigint")
                         .HasColumnName("external_invitation_id");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("first_name");
+
+                    b.Property<string>("FullName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("last_name");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("phone_number");
+
+                    b.Property<DateTime?>("ProfileSyncedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("profile_synced_at");
+
+                    b.Property<bool>("RequiresRegistrationProfile")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("requires_registration_profile");
 
                     b.Property<DateTime>("SentAt")
                         .HasColumnType("datetime2")
@@ -492,6 +1388,69 @@ namespace CekideApi.Infrastructure.Migrations
                     b.ToTable("student_invitations", (string)null);
                 });
 
+            modelBuilder.Entity("CekideApi.Domain.Attendance", b =>
+                {
+                    b.HasOne("CekideApi.Domain.KioskSession", null)
+                        .WithMany()
+                        .HasForeignKey("KioskSessionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CekideApi.Domain.RecoveryCredit", null)
+                        .WithMany()
+                        .HasForeignKey("RecoveryCreditId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CekideApi.Domain.GymShift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("CekideApi.Domain.AttendancePeriod", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId", "AttendancePeriodId")
+                        .HasPrincipalKey("StudentId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.AttendancePeriod", b =>
+                {
+                    b.HasOne("CekideApi.Domain.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.PlanAttendanceLimits", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId", "PlanLimitsId")
+                        .HasPrincipalKey("PlanId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.AttendanceQuotaNotification", b =>
+                {
+                    b.HasOne("CekideApi.Domain.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.AttendancePeriod", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId", "AttendancePeriodId")
+                        .HasPrincipalKey("StudentId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CekideApi.Domain.MonthlyPayment", b =>
                 {
                     b.HasOne("CekideApi.Domain.Student", null)
@@ -503,6 +1462,97 @@ namespace CekideApi.Infrastructure.Migrations
 
             modelBuilder.Entity("CekideApi.Domain.OverdueNotification", b =>
                 {
+                    b.HasOne("CekideApi.Domain.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.PlanAttendanceLimits", b =>
+                {
+                    b.HasOne("CekideApi.Domain.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.RecoveryCredit", b =>
+                {
+                    b.HasOne("CekideApi.Domain.PlanAttendanceLimits", null)
+                        .WithMany()
+                        .HasForeignKey("PlanLimitsId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.AttendancePeriod", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId", "AttendancePeriodId")
+                        .HasPrincipalKey("StudentId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.RecoveryWeek", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId", "RecoveryWeekId")
+                        .HasPrincipalKey("StudentId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.RecoveryReservation", b =>
+                {
+                    b.HasOne("CekideApi.Domain.GymShift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.RecoveryCredit", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId", "RecoveryCreditId")
+                        .HasPrincipalKey("StudentId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.RecoveryWeek", b =>
+                {
+                    b.HasOne("CekideApi.Domain.PlanAttendanceLimits", null)
+                        .WithMany()
+                        .HasForeignKey("PlanLimitsId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CekideApi.Domain.AttendancePeriod", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId", "AttendancePeriodId")
+                        .HasPrincipalKey("StudentId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CekideApi.Domain.ShiftHabitualOccupancy", b =>
+                {
+                    b.HasOne("CekideApi.Domain.GymShift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("CekideApi.Domain.Student", null)
                         .WithMany()
                         .HasForeignKey("StudentId")

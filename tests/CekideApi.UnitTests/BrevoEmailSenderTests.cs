@@ -70,19 +70,30 @@ public class BrevoEmailSenderTests
         var result = await Sender(handler).SendAsync(Message);
 
         Assert.False(result.Succeeded);
+        Assert.False(result.DeliveryUncertain);
         Assert.Contains("400", result.Error);
-        Assert.Contains("Sender is invalid", result.Error);
     }
 
     [Fact]
-    public async Task A_network_failure_is_translated_to_a_failed_result()
+    public async Task A_network_failure_is_classified_as_an_uncertain_delivery()
     {
         var handler = new StubHandler(_ => throw new HttpRequestException("connection refused"));
 
         var result = await Sender(handler).SendAsync(Message);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("connection refused", result.Error);
+        Assert.True(result.DeliveryUncertain);
+    }
+
+    [Fact]
+    public async Task A_provider_server_error_is_classified_as_an_uncertain_delivery()
+    {
+        var handler = new StubHandler(_ => Json(HttpStatusCode.InternalServerError, "{}"));
+
+        var result = await Sender(handler).SendAsync(Message);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.DeliveryUncertain);
     }
 
     [Theory]

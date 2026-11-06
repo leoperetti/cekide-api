@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# cekide-api
-=======
 # cekide-api
 
 Backend (.NET 10) of the gym management app (`cekide-gym-web`): students, plans, routine PDFs and monthly / short-term payments.
@@ -72,4 +69,34 @@ Development is test-first (Red -> Green -> Refactor).
 - JSON uses `snake_case` properties and lower snake_case enums. `kind=monthly|pass` (query) selects the id space for payment ids.
 - Overdue notices: the hourly `OverdueNotificationJob` acts from day 11 (Buenos Aires); one Spanish email per student and month (unique `student_id`+`period`), `Failed` ones are retried on the next run, a payment stops them. Staff list/retry them at `/api/gym/notifications`.
 - Invitations: `POST /api/gym/students/{id}/invitations[/resend]` delegate to authcraft-api and record `student_invitations`. When a `user` account first calls `GET /api/gym/me/payments`, it is linked to the active student with the same email (`identity_id` = JWT `sub`).
->>>>>>> origin/master
+
+## Attendance, shifts, and recovery operations
+
+See the [attendance operations guide](docs/attendance-operations.md) for
+kiosk setup, shift capacity, recovery reservations, quota email handling,
+invitation synchronization, and deployment order.
+
+Key rules:
+
+- Attendance check-in is one record per student and local gym date. It does
+  not require a published shift or reservation, and it must not reject an
+  arrival because a shift is full/cancelled or the student's weekly/monthly
+  quota is exceeded. Planned capacity applies only to habitual occupancies
+  and reservations; actual attendance may exceed twelve.
+- Recovery eligibility is captured as a weekly snapshot and closed after the
+  week ends. Credits are derived from that saved eligibility and origin-month
+  balance; do not reconstruct past eligibility from today's plan or invent
+  credits when a historical snapshot is missing.
+- `RecoveryAccrualJob` runs every minute and logs run failures for retry on
+  its next tick. There is currently no dedicated automatic alert for a missing
+  weekly eligibility snapshot. Monitor the job's error logs and investigate
+  gaps in closed-week history; do not backfill eligibility or credits without
+  authoritative historical data.
+- Quota emails are created only when an ordinary attendance reaches the
+  consumed monthly limit. A `delivery_unknown` result requires staff
+  reconciliation against provider evidence and is not resent automatically.
+
+Apply database changes and deploy the matching APIs before enabling the
+updated UI. Use the existing authcraft SQL deployment process for invitation
+schema changes; do not run gym or authcraft migrations against production
+without the environment's review and approval process.

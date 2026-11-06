@@ -195,4 +195,136 @@ public class StudentTests
     {
         Assert.False(NewStudent().HasRoutine);
     }
+
+    [Theory]
+    [InlineData("12.345.678", "12345678")]
+    [InlineData(" 1 234 567 ", "1234567")]
+    [InlineData("01.234.567", "01234567")]
+    public void Identification_normalizes_only_dots_and_spaces(string input, string expected)
+    {
+        var student = Student.Create("Ana Pérez", "ana@example.test", null, 1, Today, dni: input);
+
+        Assert.Equal(expected, student.Dni);
+        Assert.Equal(expected, Student.NormalizeDni(input));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("123456")]
+    [InlineData("123456789")]
+    [InlineData("12-345-678")]
+    [InlineData("1234567a")]
+    [InlineData("１２３４５６７８")]
+    [InlineData("1234\t5678")]
+    [InlineData("12345678\n")]
+    public void Identification_rejects_invalid_characters_and_lengths(string input)
+    {
+        Assert.Throws<DomainValidationException>(() =>
+            Student.Create("Ana Pérez", "ana@example.test", null, 1, Today, dni: input));
+    }
+
+    [Fact]
+    public void Omitted_or_null_identification_preserves_the_existing_value()
+    {
+        var student = Student.Create("Ana Pérez", "ana@example.test", null, 1, Today, dni: "01234567");
+
+        student.Update("Ana Pérez", "ana@example.test", null);
+        student.Update("Ana Pérez", "ana@example.test", null, dni: null);
+
+        Assert.Equal("01234567", student.Dni);
+        student.Update("Ana Pérez", "ana@example.test", null, dni: "7654321");
+        Assert.Equal("7654321", student.Dni);
+    }
+
+    [Fact]
+    public void Legacy_names_are_never_split_automatically()
+    {
+        var student = NewStudent();
+
+        Assert.Null(student.Dni);
+        Assert.Null(student.FirstName);
+        Assert.Null(student.LastName);
+        Assert.Equal("Ana Pérez", student.FullName);
+    }
+
+    [Fact]
+    public void Structured_names_preserve_compound_names_and_trim_each_part()
+    {
+        var student = Student.Create(" Ana María de la Cruz ", "ana@example.test", null, 1, Today,
+            firstName: " Ana María ", lastName: " de la Cruz ");
+
+        Assert.Equal("Ana María", student.FirstName);
+        Assert.Equal("de la Cruz", student.LastName);
+        Assert.Equal("Ana María de la Cruz", student.FullName);
+    }
+
+    [Theory]
+    [InlineData("Ana", null)]
+    [InlineData(null, "Pérez")]
+    [InlineData("", "Pérez")]
+    [InlineData("Ana", " ")]
+    [InlineData(" ", " ")]
+    public void Structured_names_require_both_nonempty_parts(string? firstName, string? lastName)
+    {
+        Assert.Throws<DomainValidationException>(() =>
+            Student.Create("Ana Pérez", "ana@example.test", null, 1, Today,
+                firstName: firstName, lastName: lastName));
+    }
+
+    [Fact]
+    public void Structured_names_reject_a_contradictory_full_name()
+    {
+        Assert.Throws<DomainValidationException>(() =>
+            Student.Create("Another Name", "ana@example.test", null, 1, Today,
+                firstName: "Ana", lastName: "Pérez"));
+    }
+
+    [Fact]
+    public void Structured_names_validate_the_combined_legacy_length_limit()
+    {
+        var firstName = new string('a', 74);
+        var lastName = new string('b', 75);
+        var fullName = $"{firstName} {lastName}";
+        var student = Student.Create(fullName, "ana@example.test", null, 1, Today,
+            firstName: firstName, lastName: lastName);
+
+        Assert.Equal(Student.MaxNameLength, student.FullName.Length);
+        Assert.Throws<DomainValidationException>(() =>
+            student.Update(fullName + "b", "ana@example.test", null,
+                firstName: firstName, lastName: lastName + "b"));
+        Assert.Equal(fullName, student.FullName);
+    }
+
+    [Fact]
+    public void Legacy_update_clears_parts_only_when_full_name_changes()
+    {
+        var student = Student.Create("Ana María Pérez", "ana@example.test", null, 1, Today,
+            firstName: "Ana María", lastName: "Pérez");
+
+        student.Update(" Ana María Pérez ", "ana@example.test", null);
+        Assert.Equal("Ana María", student.FirstName);
+        Assert.Equal("Pérez", student.LastName);
+
+        student.Update("Ana María Gómez", "ana@example.test", null);
+        Assert.Null(student.FirstName);
+        Assert.Null(student.LastName);
+        Assert.Equal("Ana María Gómez", student.FullName);
+    }
+
+    [Fact]
+    public void Invalid_update_does_not_partially_change_the_profile()
+    {
+        var student = Student.Create("Ana Pérez", "ana@example.test", "123", 1, Today,
+            dni: "01234567", firstName: "Ana", lastName: "Pérez");
+
+        Assert.Throws<DomainValidationException>(() =>
+            student.Update("Ana Gómez", "new@example.test", "456", dni: "invalid",
+                firstName: "Ana", lastName: "Gómez"));
+        Assert.Equal("Ana Pérez", student.FullName);
+        Assert.Equal("Pérez", student.LastName);
+        Assert.Equal("ana@example.test", student.Email);
+        Assert.Equal("123", student.Phone);
+        Assert.Equal("01234567", student.Dni);
+    }
 }
