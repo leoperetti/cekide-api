@@ -38,6 +38,7 @@ jobs:
   deploy:
     runs-on: windows-latest
     needs: build
+    environment: staging
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
@@ -47,13 +48,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_DE302A3F6F4A46C7B9B83D33F0070AD0 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EE7F420D76664257854EA0D240E03F79 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_967498102ABB46A897D56460E1244A7A }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
